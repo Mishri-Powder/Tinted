@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Tinted · Text Brush Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital@0;1&family=Space+Mono&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: radial-gradient(circle at 20% 30%, #e8f0ff, #d9e2f0); font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+    #canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; background: #ffffff; }
+
+    .glass { background: rgba(255,255,255,0.85); backdrop-filter: blur(28px); border: 0.5px solid rgba(255,255,255,0.6); box-shadow: 0 12px 32px rgba(0,0,0,0.08); border-radius: 16px; }
+    .floating-toolbar { position: fixed; bottom: 24px; left: 0; right: 0; display: flex; justify-content: center; z-index: 100; pointer-events: none; }
+    .toolbar-container { display: flex; flex-direction: column; align-items: center; pointer-events: auto; transition: all 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1); border-radius: 60px; overflow: hidden; max-width: 95vw; background: rgba(255,255,255,0.85); backdrop-filter: blur(28px); }
+    .toolbar-container.expanded { border-radius: 24px; }
+    .button-row { display: flex; gap: 12px; padding: 8px 20px; background: transparent; order: 1; align-items: center; }
+    .expand-section {
+      order: 0;
+      max-height: 0;
+      opacity: 0;
+      overflow: hidden;
+      transition: max-height 0.4s ease-out, opacity 0.3s ease, padding 0.3s ease;
+      width: 100%;
+      padding: 0 20px;
+    }
+    .toolbar-container.expanded .expand-section {
+      max-height: 750px;
+      opacity: 1;
+      padding: 16px 20px 12px 20px;
+    }
+    .expand-inner { display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 300px; }
+
+    .brush-settings-row { display: flex; gap: 12px; width: 100%; }
+    .brush-left { flex: 1; display: flex; flex-direction: column; }
+    .brush-right { display: flex; flex-direction: column; gap: 8px; min-width: 200px; }
+    .toggles-row { display: flex; gap: 8px; justify-content: flex-start; flex-wrap: wrap; }
+    .knobs-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+    .preview-container { position: relative; width: 100%; margin-top: auto; display: flex; flex-direction: column; }
+    .live-preview-mini { width: 100%; height: 80px; background: rgba(255,255,255,0.9); border-radius: 16px; object-fit: contain; }
+    .alignment-dots { display: flex; position: absolute; bottom: 2px; left: 0; right: 0; justify-content: space-between; padding: 0 2px; }
+    .align-dot { width: 24px; height: 24px; border-radius: 12px; background: rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; color: white; }
+    .align-dot.active { background: #3b82f6; }
+
+    .top-toggle-area { margin-bottom: 8px; display: none; flex-direction: column; gap: 8px; }
+    .top-toggle-area.show { display: flex; }
+    .quote-display { font-size: 0.85rem; line-height: 1.4; padding: 8px 12px; max-height: 80px; overflow-y: auto; font-style: italic; background: transparent; }
+    .history-list { display: flex; flex-wrap: wrap; gap: 8px; max-height: 100px; overflow-y: auto; padding: 4px; }
+    .history-item { background: rgba(255,255,255,0.8); border-radius: 40px; padding: 4px 12px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+    .quote-actions { display: flex; gap: 12px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
+    .icon-btn { background: rgba(255,255,255,0.9); border: 0.5px solid rgba(0,0,0,0.1); border-radius: 40px; padding: 6px 12px; font-size: 1.2rem; cursor: pointer; transition: 0.1s; display: inline-flex; align-items: center; gap: 6px; }
+    .icon-btn.active { background: #3b82f6; color: white; border-color: #3b82f6; }
+    .fetch-btn { white-space: normal; word-break: break-word; max-width: 200px; text-align: center; }
+    .grass-loader { font-size: 1.2rem; letter-spacing: 4px; display: flex; gap: 4px; justify-content: center; align-items: center; filter: grayscale(1); }
+    .grass-blade { display: inline-block; animation: sway 0.8s infinite ease-in-out; transform-origin: bottom center; }
+    @keyframes sway { 0% { transform: rotate(0deg) translateY(0px); } 25% { transform: rotate(6deg) translateY(-2px); } 50% { transform: rotate(-5deg) translateY(1px); } 75% { transform: rotate(4deg) translateY(-1px); } 100% { transform: rotate(0deg) translateY(0px); } }
+
+    .knob { display: flex; flex-direction: column; align-items: center; gap: 2px; background: rgba(255,255,255,0.6); border-radius: 20px; padding: 4px 4px; min-width: 70px; }
+    .knob-label { font-size: 0.55rem; font-weight: 600; text-align: center; }
+    .knob-wheel { width: 40px; height: 40px; border-radius: 40px; background: rgba(255,255,255,0.9); box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center; cursor: ns-resize; touch-action: none; user-select: none; font-weight: 600; font-size: 0.7rem; }
+    .knob-value { font-size: 0.55rem; font-family: monospace; background: rgba(0,0,0,0.05); padding: 1px 4px; border-radius: 20px; }
+
+    .slider-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+    .slider-label { font-size: 0.75rem; font-weight: 600; display: flex; justify-content: space-between; }
+    input[type="range"] { width: 100%; height: 12px; -webkit-appearance: none; border-radius: 12px; background: #e2e8f0; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; border-radius: 12px; background: white; border: 2px solid #3b82f6; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+
+    .color-preview { width: 100%; height: 44px; border-radius: 24px; margin-top: 4px; border: 0.5px solid rgba(0,0,0,0.08); background-size: 20px 20px; background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%); position: relative; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; }
+    .preview-color { width: 100%; height: 100%; border-radius: 24px; position: absolute; left: 0; top: 0; z-index: 0; }
+    .preview-buttons { position: relative; z-index: 1; display: flex; gap: 12px; }
+    .preview-btn { background: rgba(255,255,255,0.9); border: 0.5px solid rgba(0,0,0,0.1); border-radius: 40px; padding: 4px 12px; font-size: 0.75rem; cursor: pointer; }
+    .color-variance-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; margin-top: 4px; height: 30px; }
+    .variance-swatch { border-radius: 4px; }
+    .sassy-toast { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); backdrop-filter: blur(12px); color: white; padding: 6px 14px; border-radius: 40px; font-family: 'Brush Script MT', cursive; font-style: italic; font-size: 0.85rem; white-space: nowrap; pointer-events: none; z-index: 10; opacity: 0; transition: opacity 0.4s ease; margin-bottom: 6px; }
+
+    .eraser-subpanel { background: rgba(0,0,0,0.05); border-radius: 24px; padding: 8px; margin-top: 8px; display: none; flex-direction: row; gap: 8px; align-items: center; justify-content: center; }
+    .eraser-subpanel.show { display: flex; }
+
+    .layer-list { display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; padding-right: 4px; }
+    .layer-item { display: flex; flex-direction: column; gap: 6px; background: rgba(0,0,0,0.04); padding: 10px 12px; border-radius: 28px; cursor: pointer; transition: background 0.1s; }
+    .layer-item.active { background: #3b82f6; color: white; }
+    .layer-main-row { display: flex; justify-content: space-between; align-items: center; }
+    .layer-font-row { display: flex; gap: 6px; align-items: center; }
+    .layer-transform-row { display: flex; gap: 6px; align-items: center; margin-left: 8px; }
+    .layer-actions { display: flex; gap: 6px; align-items: center; }
+    .layer-action-btn { background: transparent !important; border: none; font-size: 1rem; cursor: pointer; padding: 2px; opacity: 0.7; }
+    .compact-select { background: rgba(255,255,255,0.9); border: 0.5px solid rgba(0,0,0,0.1); border-radius: 40px; padding: 6px 24px 6px 12px; font-size: 0.75rem; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; backdrop-filter: blur(12px); }
+    .tool-btn { background: rgba(255,255,255,0.9); border: none; border-radius: 48px; padding: 10px 14px; font-size: 1.1rem; font-weight: 500; cursor: pointer; min-width: 46px; display: flex; align-items: center; justify-content: center; color: #1e293b; transition: filter 0.2s, opacity 0.2s; }
+    .tool-btn.greyed-out { filter: grayscale(0.6); opacity: 0.6; }
+    .tool-btn.eraser-active { background: #111 !important; color: white; }
+    .tool-btn.circular { width: 48px; height: 48px; border-radius: 48px; padding: 0; position: relative; }
+    .blend-sup { position: absolute; top: -4px; right: -4px; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); color: white; font-size: 0.6rem; padding: 2px 4px; border-radius: 12px; }
+    .isolate-active { background: #fee2e2 !important; color: #dc2626 !important; }
+    .text-input-wrapper { display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.9); border-radius: 48px; height: 48px; width: 48px; cursor: pointer; transition: filter 0.2s, opacity 0.2s; }
+    #brushTextarea { background: transparent; border: none; padding: 0; font-size: 1rem; outline: none; width: 0; resize: vertical; display: none; border-radius: 48px; }
+    .text-input-wrapper.expanded { width: auto; }
+    .text-input-wrapper.expanded #brushTextarea { display: block; width: 200px; padding: 10px 16px; min-height: 48px; }
+    .text-input-wrapper.collapsed::after { content: "t"; font-size: 1.3rem; font-weight: 500; }
+
+    .export-panel { display: none; flex-direction: column; gap: 12px; margin-top: 8px; padding: 12px; background: rgba(255,255,255,0.6); border-radius: 24px; }
+    .export-panel.show { display: flex; }
+    .export-options { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .export-btn { background: rgba(255,255,255,0.9); border: 0.5px solid rgba(0,0,0,0.1); border-radius: 40px; padding: 6px 14px; font-size: 0.85rem; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .export-toggle { display: flex; gap: 12px; justify-content: center; align-items: center; font-size: 0.75rem; flex-wrap: wrap; }
+
+    .search-panel { display: flex; flex-direction: column; gap: 10px; }
+    .search-row { display: flex; gap: 8px; align-items: center; }
+    .search-input { flex: 1; background: rgba(255,255,255,0.9); border: 0.5px solid rgba(0,0,0,0.1); border-radius: 40px; padding: 8px 16px; font-size: 0.85rem; outline: none; }
+    .search-actions { display: flex; gap: 8px; justify-content: space-between; align-items: center; }
+    .search-results { max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,0.02); border-radius: 20px; padding: 6px; }
+    .search-result-item { background: rgba(255,255,255,0.8); border-radius: 40px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer; display: flex; justify-content: space-between; }
+    .search-result-item:hover { background: #e2e8f0; }
+    .search-result-item.selected { background: #3b82f6; color: white; }
+
+    .undo-redo-btn { position: fixed; bottom: 24px; background: rgba(255,255,255,0.9); backdrop-filter: blur(28px); border: 0.5px solid rgba(255,255,255,0.6); border-radius: 60px; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer; z-index: 101; filter: grayscale(1); }
+    .undo-btn { left: 20px; bottom: 24px; }
+    .redo-btn { right: 20px; bottom: 24px; }
+    .search-toggle-btn { position: fixed; top: 24px; right: 24px; background: rgba(255,255,255,0.9); backdrop-filter: blur(28px); border: 0.5px solid rgba(255,255,255,0.6); border-radius: 60px; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; cursor: pointer; z-index: 101; filter: grayscale(1); }
+    .search-toggle-btn.active { filter: grayscale(0); background: #3b82f6; color: white; }
+
+    .eraser-bubble { position: fixed; pointer-events: none; border-radius: 50%; transform: translate(-50%, -50%); background: radial-gradient(circle, rgba(255,255,255,0.4), rgba(180,220,255,0.2)); border: 3px solid rgba(204,204,204,0.6); backdrop-filter: blur(4px); z-index: 150; transition: width 0.05s, border-color 0.1s; opacity: 0.7; }
+    .eyedropper-bubble { position: fixed; pointer-events: auto; cursor: pointer; z-index: 300; width: 140px; height: 140px; border-radius: 50%; transform: translate(-50%, -50%); background: rgba(255,255,255,0.3); backdrop-filter: blur(8px); border: 3px solid #ccc; overflow: hidden; }
+    .bubble-zoom { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; }
+    .eyedropper-confirm { position: fixed; z-index: 301; width: 44px; height: 44px; border-radius: 44px; background: white; backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; font-size: 1.6rem; color: #10b981; cursor: pointer; transform: translate(-50%, -50%); }
+    .emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; max-height: 260px; overflow-y: auto; padding: 8px; }
+    .emoji-grid button { background: none; border: none; font-size: 1.6rem; padding: 6px; cursor: pointer; border-radius: 12px; }
+    .hidden { display: none !important; }
+
+    .glass-check { accent-color: #3b82f6; transform: scale(1.1); margin: 0 4px; }
+    .eraser-mode-btn { background: rgba(255,255,255,0.9); border: 0.5px solid rgba(0,0,0,0.1); border-radius: 40px; padding: 6px 14px; font-size: 0.75rem; cursor: pointer; backdrop-filter: blur(12px); }
+    .eraser-mode-btn.active { background: #3b82f6; color: white; }
+
+    .multi-toggle { margin-left: 8px; }
+    .dropdown-menu { position: absolute; background: rgba(255,255,255,0.95); backdrop-filter: blur(16px); border-radius: 16px; padding: 8px; box-shadow: 0 8px 20px rgba(0,0,0,0.12); z-index: 500; display: none; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; }
+    .dropdown-item { padding: 8px 16px; border-radius: 40px; cursor: pointer; font-size: 0.9rem; white-space: nowrap; }
+    .dropdown-item:hover { background: rgba(59,130,246,0.1); }
+
+    @media (max-width: 640px) {
+      .brush-settings-row { flex-direction: column; }
+      .knobs-grid { grid-template-columns: repeat(2, 1fr); }
+      .emoji-grid { grid-template-columns: repeat(6, 1fr); }
+    }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="eraserBubble" class="eraser-bubble hidden"></div>
+<button id="undoBtn" class="undo-redo-btn undo-btn">💔</button>
+<button id="redoBtn" class="undo-redo-btn redo-btn">❤️‍🩹</button>
+<button id="searchToggleBtn" class="search-toggle-btn">💸</button>
+
+<div class="floating-toolbar">
+  <div class="toolbar-container glass" id="toolbarContainer">
+    <div class="expand-section" id="expandSection">
+      <div id="expandContent" class="expand-inner"></div>
+    </div>
+    <div class="button-row">
+      <button id="layersBtn" class="tool-btn circular">3</button>
+      <div class="text-input-wrapper collapsed" id="textInputWrapper"><textarea id="brushTextarea" rows="1" placeholder="type…" enterkeyhint="done">hello</textarea></div>
+      <button id="colorBtn" class="tool-btn"><div id="colorSwatch" style="width:24px;height:24px;border-radius:24px;background:#3b82f6;"></div></button>
+      <button id="emojiBtn" class="tool-btn">😎</button>
+      <button id="eraserBtn" class="tool-btn">✨</button>
+      <div class="eraser-mode-toggle" id="eraserModeToggleContainer" style="display:none; gap:4px;">
+        <button class="eraser-mode-btn active" data-mode="word">Word</button>
+        <button class="eraser-mode-btn" data-mode="letter">Letter</button>
+      </div>
+      <button id="multiEmojiToggle" class="icon-btn multi-toggle" style="display:none;">Replace</button>
+    </div>
+  </div>
+</div>
+
+<div id="eyedropperBubble" class="eyedropper-bubble hidden"><canvas id="bubbleZoomCanvas" class="bubble-zoom" width="140" height="140"></canvas></div>
+<div id="eyedropperConfirm" class="eyedropper-confirm hidden">✓</div>
+<div id="fetcherDropdown" class="dropdown-menu"></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ----- DOM Elements -----
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const brushTextarea = document.getElementById('brushTextarea');
+  const textWrapper = document.getElementById('textInputWrapper');
+  const layersBtn = document.getElementById('layersBtn');
+  const colorBtn = document.getElementById('colorBtn');
+  const emojiBtn = document.getElementById('emojiBtn');
+  const eraserBtn = document.getElementById('eraserBtn');
+  const toolbarContainer = document.getElementById('toolbarContainer');
+  const expandContent = document.getElementById('expandContent');
+  const colorSwatch = document.getElementById('colorSwatch');
+  const undoBtn = document.getElementById('undoBtn');
+  const redoBtn = document.getElementById('redoBtn');
+  const searchToggleBtn = document.getElementById('searchToggleBtn');
+  const eraserBubble = document.getElementById('eraserBubble');
+  const eyedropperBubble = document.getElementById('eyedropperBubble');
+  const bubbleZoomCanvas = document.getElementById('bubbleZoomCanvas');
+  const eyedropperConfirm = document.getElementById('eyedropperConfirm');
+  const eraserModeWordBtn = document.querySelector('[data-mode="word"]');
+  const eraserModeLetterBtn = document.querySelector('[data-mode="letter"]');
+  const eraserModeToggleContainer = document.getElementById('eraserModeToggleContainer');
+  const multiEmojiToggle = document.getElementById('multiEmojiToggle');
+  const fetcherDropdown = document.getElementById('fetcherDropdown');
+
+  // ----- Knob Class -----
+  class Knob {
+    constructor(container, label, min, max, step, initial, onChange) {
+      this.min = min; this.max = max; this.step = step; this.value = initial; this.initial = initial; this.onChange = onChange;
+      this.dragStartY = 0; this.dragStartVal = 0; this.dragging = false;
+      this.longPressTimer = null;
+      this.el = document.createElement('div'); this.el.className = 'knob';
+      this.el.innerHTML = `<div class="knob-label">${label}</div><div class="knob-wheel"><span class="knob-value"></span></div>`;
+      this.valueSpan = this.el.querySelector('.knob-value');
+      this.wheel = this.el.querySelector('.knob-wheel');
+      this.updateDisplay();
+      container.appendChild(this.el);
+      this.wheel.addEventListener('mousedown', this.onDragStart.bind(this));
+      this.wheel.addEventListener('touchstart', this.onDragStart.bind(this), { passive: false });
+      window.addEventListener('mousemove', this.onDragMove.bind(this));
+      window.addEventListener('touchmove', this.onDragMove.bind(this), { passive: false });
+      window.addEventListener('mouseup', this.onDragEnd.bind(this));
+      window.addEventListener('touchend', this.onDragEnd.bind(this));
+    }
+    updateDisplay() { this.valueSpan.textContent = Math.round(this.value * 10) / 10; }
+    setValue(val) {
+      let newVal = Math.min(this.max, Math.max(this.min, val));
+      if (this.step) newVal = Math.round(newVal / this.step) * this.step;
+      if (newVal !== this.value) { this.value = newVal; this.updateDisplay(); if (this.onChange) this.onChange(this.value); }
+    }
+    reset() { this.setValue(this.initial); }
+    onDragStart(e) {
+      e.preventDefault();
+      this.dragging = true;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      this.dragStartY = clientY;
+      this.dragStartVal = this.value;
+      this.longPressTimer = setTimeout(() => { this.reset(); this.dragging = false; }, 600);
+    }
+    onDragMove(e) {
+      if (!this.dragging) return;
+      e.preventDefault();
+      clearTimeout(this.longPressTimer);
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const delta = (this.dragStartY - clientY) * 0.4;
+      this.setValue(this.dragStartVal + delta);
+    }
+    onDragEnd(e) {
+      clearTimeout(this.longPressTimer);
+      this.dragging = false;
+    }
+  }
+
+  // ----- App State -----
+  let brushSize = 32, sizeJitter = 0, scatter = 0, rotationJitter = 0, flowSpacing = 22;
+  let wordFlowEnabled = false;
+  let textAlign = 'center';
+  let currentL = 0.7, currentC = 0.15, currentH = 240;
+  let currentOpacity = 1.0, colorJitter = 0;
+  let currentColor = '#3b82f6';
+  let canvasBgColor = '#ffffff';
+  let gamutLock = true;
+  let view = { scale: 1.0, offsetX: 0, offsetY: 0, angle: 0 };
+  let layers = [{ id: 'layer0', name: 'Background', visible: true, locked: false, stamps: [], blendMode: 'normal', opacity: 1.0, transform: { x:0, y:0, rot:0 }, font: "'Playfair Display', serif", grain: 0 }];
+  let activeLayerId = 'layer0';
+  let toolMode = 'brush';
+  let eraserSubMode = 'word';
+  const ERASER_RADIUS = 30;
+  let historyStack = [], historyIndex = -1;
+  let isDrawing = false, lastX = 0, lastY = 0, strokeActive = false;
+  let isPanning = false, lastPanX = 0, lastPanY = 0;
+  let isRotating = false, initialPinchDist = 0, initialScale = 1, pinchCenterX = 0, pinchCenterY = 0, initialAngle = 0, initialTouchAngle = 0;
+  let eyedropperActive = false, lastEyedropperColor = '#3b82f6';
+  let isolateActive = false, previousVisibility = {};
+  let textHistory = [];
+  let currentQuoteText = '';
+  let lastErasedColor = '#cccccc';
+  let multiEmojiEnabled = false;
+  let openToggle = null;
+
+  // Search state
+  let searchMatches = [];
+  let selectedMatchIndex = -1;
+  let searchActive = false;
+
+  // Fetcher state
+  const fetchers = [
+    { id: 'quote', name: 'Quote', icon: '🌷', fetcher: fetchQuotable },
+    { id: 'word', name: 'Word of the Day', icon: '📖', fetcher: fetchWordOfDay },
+    { id: 'affirmation', name: 'Affirmation', icon: '🌸', fetcher: fetchAffirmation },
+    { id: 'onthisday', name: 'On This Day', icon: '📅', fetcher: fetchOnThisDay },
+    { id: 'lyrics', name: 'Song Lyric', icon: '🎵', fetcher: fetchLyrics, hasSearch: true, hasGenre: true },
+    { id: 'randomemojis', name: 'Story-ish', icon: '🎲', fetcher: fetchRandomEmojis },
+    { id: 'proverb', name: 'Proverb', icon: '📜', fetcher: fetchProverb },
+    { id: 'advice', name: 'Advice', icon: '💬', fetcher: fetchAdvice },
+    { id: 'dadjoke', name: 'Dad Joke', icon: '👔', fetcher: fetchDadJoke },
+    { id: 'bored', name: 'What Now', icon: '🥱', fetcher: fetchBored },
+    { id: 'corporate', name: 'Corporate BS', icon: '🏢', fetcher: fetchCorporate },
+    { id: 'kanyetrump', name: 'Kanye/Trump', icon: '🎤', fetcher: fetchKanyeTrump },
+    { id: 'programming', name: 'Programming', icon: '💻', fetcher: fetchProgramming },
+    { id: 'chuck', name: 'Chuck Norris', icon: '🥋', fetcher: fetchChuckNorris, hasCustomName: true },
+    { id: 'recipe', name: 'Next Step', icon: '🍳', fetcher: fetchRecipe }
+  ];
+  let currentFetcher = fetchers[0];
+
+  // UI state for color picker
+  let lValSpan, cValSpan, hValSpan, opacityValSpan, jitterValSpan;
+
+  // Spatial index
+  const spatialGrid = new Map();
+  const CELL_SIZE = 200;
+  function getCellKey(x,y) { return `${Math.floor(x/CELL_SIZE)},${Math.floor(y/CELL_SIZE)}`; }
+  function addStampToSpatial(stamp, layerId) {
+    const key = getCellKey(stamp.x, stamp.y);
+    if (!spatialGrid.has(key)) spatialGrid.set(key, []);
+    spatialGrid.get(key).push({ stamp, layerId });
+  }
+  function rebuildSpatialIndex() {
+    spatialGrid.clear();
+    layers.forEach(l => l.stamps.forEach(s => addStampToSpatial(s, l.id)));
+  }
+  function queryRadius(wx, wy, radius) {
+    const results = [];
+    const minX = wx - radius, maxX = wx + radius, minY = wy - radius, maxY = wy + radius;
+    const [sx, sy] = getCellKey(minX, minY).split(',').map(Number);
+    const [ex, ey] = getCellKey(maxX, maxY).split(',').map(Number);
+    for (let cx = sx; cx <= ex; cx++) {
+      for (let cy = sy; cy <= ey; cy++) {
+        const cell = spatialGrid.get(`${cx},${cy}`);
+        if (cell) cell.forEach(item => { if (Math.hypot(item.stamp.x - wx, item.stamp.y - wy) <= radius) results.push(item); });
+      }
+    }
+    return results;
+  }
+
+  const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
+  const charPosCache = new Map();
+  function getCharPositions(stamp, font) {
+    const key = `${stamp.text}|${stamp.size}|${font}`;
+    if (charPosCache.has(key)) return charPosCache.get(key).map(p => ({ x: stamp.x + p.ox, y: stamp.y + p.oy }));
+    ctx.save();
+    ctx.font = `bold ${stamp.size}px ${font}`;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const segments = [...segmenter.segment(stamp.text)].map(s => s.segment);
+    const totalWidth = ctx.measureText(stamp.text).width;
+    let curX = stamp.x - totalWidth/2;
+    const positions = [];
+    for (let seg of segments) {
+      const cw = ctx.measureText(seg).width;
+      positions.push({ ox: curX + cw/2 - stamp.x, oy: 0 });
+      curX += cw;
+    }
+    ctx.restore();
+    charPosCache.set(key, positions);
+    return positions.map(p => ({ x: stamp.x + p.ox, y: stamp.y + p.oy }));
+  }
+
+  function oklchToRgb(l, c, h) {
+    const hRad = h * Math.PI / 180;
+    const a = c * Math.cos(hRad), b = c * Math.sin(hRad);
+    const l_ = l + 0.3963377774*a + 0.2158037573*b;
+    const m_ = l - 0.1055613458*a - 0.0638541728*b;
+    const s_ = l - 0.0894841775*a - 1.2914855480*b;
+    const l3 = l_*l_*l_, m3 = m_*m_*m_, s3 = s_*s_*s_;
+    let r = 4.0767416621*l3 - 3.3077115913*m3 + 0.2309699292*s3;
+    let g = -1.2684380046*l3 + 2.6097574011*m3 - 0.3413193965*s3;
+    let b_ = -0.0041960863*l3 - 0.7034186147*m3 + 1.7076147010*s3;
+    const toSrgb = x => x <= 0.0031308 ? 12.92*x : 1.055*Math.pow(x,1/2.4)-0.055;
+    r = Math.min(1, Math.max(0, toSrgb(r)));
+    g = Math.min(1, Math.max(0, toSrgb(g)));
+    b_ = Math.min(1, Math.max(0, toSrgb(b_)));
+    return `#${((1<<24)+(Math.round(r*255)<<16)+(Math.round(g*255)<<8)+Math.round(b_*255)).toString(16).slice(1)}`;
+  }
+  function rgbToOklch(r, g, b) {
+    let rl = r/255, gl = g/255, bl = b/255;
+    rl = rl <= 0.04045 ? rl/12.92 : Math.pow((rl+0.055)/1.055, 2.4);
+    gl = gl <= 0.04045 ? gl/12.92 : Math.pow((gl+0.055)/1.055, 2.4);
+    bl = bl <= 0.04045 ? bl/12.92 : Math.pow((bl+0.055)/1.055, 2.4);
+    let l = 0.4122214708*rl + 0.5363325363*gl + 0.0514459929*bl;
+    let m = 0.2119034982*rl + 0.6806995451*gl + 0.1073969566*bl;
+    let s = 0.0883024619*rl + 0.2817188376*gl + 0.6299787005*bl;
+    let l_ = Math.cbrt(l), m_ = Math.cbrt(m), s_ = Math.cbrt(s);
+    let L = 0.2104542553*l_ + 0.7936177850*m_ - 0.0040720468*s_;
+    let a = 1.9779984951*l_ - 2.4285922050*m_ + 0.4505937099*s_;
+    let b_ = 0.0259040371*l_ + 0.7827717662*m_ - 0.8086757660*s_;
+    let C = Math.hypot(a, b_);
+    let H = Math.atan2(b_, a) * 180 / Math.PI;
+    if (H < 0) H += 360;
+    return { l: L, c: C, h: H };
+  }
+  function clampToGamut(l, c, h) {
+    let bestL = l, bestC = c, bestDist = Infinity;
+    const stepL = 0.02, stepC = 0.02;
+    for (let dl = -0.1; dl <= 0.1; dl += stepL) {
+      for (let dc = -0.1; dc <= 0.1; dc += stepC) {
+        let testL = Math.min(1, Math.max(0, l+dl));
+        let testC = Math.min(0.4, Math.max(0, c+dc));
+        if (oklchToRgb(testL, testC, h)) {
+          let dist = Math.hypot(testL - l, testC - c);
+          if (dist < bestDist) { bestDist = dist; bestL = testL; bestC = testC; }
+        }
+      }
+    }
+    return { l: bestL, c: bestC };
+  }
+  function getCurrentColor() {
+    let l = currentL, c = currentC, h = currentH;
+    if (colorJitter > 0) {
+      l = Math.min(1, Math.max(0, l + (Math.random()-0.5)*(colorJitter/100)*0.3));
+      c = Math.min(0.4, Math.max(0, c + (Math.random()-0.5)*(colorJitter/100)*0.2));
+      h = (h + (Math.random()-0.5)*(colorJitter/100)*360 + 360) % 360;
+    }
+    if (gamutLock) {
+      let hex = oklchToRgb(l, c, h);
+      if (!hex) {
+        const clamped = clampToGamut(l, c, h);
+        l = clamped.l; c = clamped.c;
+        hex = oklchToRgb(l, c, h) || '#ff00ff';
+      }
+      return hex;
+    } else {
+      return oklchToRgb(l, c, h);
+    }
+  }
+  function getCurrentSize() {
+    let s = brushSize;
+    if (sizeJitter > 0) s = Math.max(8, brushSize + (Math.random()-0.5)*2*(sizeJitter/100)*brushSize);
+    return s;
+  }
+  function getScatterOffset() {
+    if (scatter === 0) return {x:0, y:0};
+    const a = Math.random()*2*Math.PI, r = Math.random()*scatter;
+    return { x: Math.cos(a)*r, y: Math.sin(a)*r };
+  }
+  function getRotationRadians(strokeAngle = null) {
+    if (wordFlowEnabled && strokeAngle !== null) return strokeAngle;
+    if (rotationJitter === 0) return 0;
+    return (Math.random() - 0.5) * 2 * rotationJitter * Math.PI / 180;
+  }
+
+  const grainCanvas = document.createElement('canvas');
+  grainCanvas.width = 64; grainCanvas.height = 64;
+  const gCtx = grainCanvas.getContext('2d');
+  function generateGrainPattern(intensity) {
+    const idata = gCtx.createImageData(64, 64);
+    for (let i = 0; i < idata.data.length; i += 4) {
+      idata.data[i] = 255; idata.data[i+1] = 255; idata.data[i+2] = 255;
+      idata.data[i+3] = Math.floor(Math.random() * intensity * 2.55);
+    }
+    gCtx.putImageData(idata, 0, 0);
+  }
+
+  function screenToWorld(sx, sy) {
+    const cos = Math.cos(-view.angle), sin = Math.sin(-view.angle);
+    let x = (sx - view.offsetX) / view.scale;
+    let y = (sy - view.offsetY) / view.scale;
+    return { x: x*cos - y*sin, y: x*sin + y*cos };
+  }
+  function getActiveLayer() { return layers.find(l => l.id === activeLayerId); }
+
+  function worldToLayerLocal(wx, wy, layer) {
+    const t = layer.transform || { x:0, y:0, rot:0 };
+    const cos = Math.cos(-t.rot * Math.PI / 180);
+    const sin = Math.sin(-t.rot * Math.PI / 180);
+    let dx = wx - t.x, dy = wy - t.y;
+    return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+  }
+
+  function addStamp(wx, wy, force = false, strokeAngle = null) {
+    if (toolMode !== 'brush') return;
+    const text = brushTextarea.value;
+    if (!text.trim()) return;
+    const layer = getActiveLayer();
+    if (!layer || layer.locked) return;
+    const local = worldToLayerLocal(wx, wy, layer);
+    if (!force && strokeActive) {
+      const dx = local.x - lastX, dy = local.y - lastY;
+      const dist = Math.hypot(dx, dy);
+      if (dist < flowSpacing) return;
+      if (dist > flowSpacing * 1.5) {
+        const steps = Math.ceil(dist / flowSpacing);
+        for (let s = 1; s < steps; s++) {
+          const t = s / steps;
+          const ix = lastX + dx * t, iy = lastY + dy * t;
+          addStampAtLocal(ix, iy, layer, strokeAngle);
+        }
+      }
+    }
+    addStampAtLocal(local.x, local.y, layer, strokeAngle);
+    lastX = local.x; lastY = local.y;
+    redrawCanvas();
+    if (!strokeActive) saveToHistory();
+  }
+
+  function addStampAtLocal(lx, ly, layer, strokeAngle) {
+    const text = brushTextarea.value;
+    const lines = text.split('\n');
+    const lineHeight = 44, totalHeight = (lines.length-1)*lineHeight, startY = ly - totalHeight/2;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      const off = getScatterOffset();
+      const x = lx + off.x, y = startY + i*lineHeight + off.y;
+      const stamp = { type: 'text', text: line, color: getCurrentColor(), size: getCurrentSize(), rotation: getRotationRadians(strokeAngle), opacity: currentOpacity, x, y };
+      layer.stamps.push(stamp);
+      addStampToSpatial(stamp, layer.id);
+      addToHistory(line);
+    }
+  }
+
+  function eraseAt(wx, wy) {
+    const layer = getActiveLayer();
+    if (!layer || layer.locked) return;
+    const local = worldToLayerLocal(wx, wy, layer);
+    const candidates = queryRadius(local.x, local.y, ERASER_RADIUS).filter(c => c.layerId === layer.id);
+    let erased = false;
+    if (eraserSubMode === 'word') {
+      candidates.forEach(c => {
+        layer.stamps = layer.stamps.filter(s => s !== c.stamp);
+        lastErasedColor = c.stamp.color;
+        erased = true;
+      });
+    } else {
+      for (let {stamp} of candidates) {
+        const positions = getCharPositions(stamp, layer.font);
+        const segments = [...segmenter.segment(stamp.text)].map(s => s.segment);
+        let keep = '';
+        for (let i = 0; i < segments.length; i++) {
+          const dist = Math.hypot(positions[i].x - local.x, positions[i].y - local.y);
+          if (dist > ERASER_RADIUS) keep += segments[i];
+        }
+        if (keep.length === 0) {
+          layer.stamps = layer.stamps.filter(s => s !== stamp);
+          erased = true;
+          lastErasedColor = stamp.color;
+        } else if (keep !== stamp.text) {
+          const idx = layer.stamps.indexOf(stamp);
+          if (idx !== -1) {
+            layer.stamps[idx] = {...stamp, text: keep};
+            charPosCache.delete(`${stamp.text}|${stamp.size}|${layer.font}`);
+            erased = true;
+            lastErasedColor = stamp.color;
+          }
+        }
+      }
+    }
+    if (erased) {
+      rebuildSpatialIndex();
+      redrawCanvas();
+      if (!strokeActive) saveToHistory();
+      eraserBubble.style.borderColor = lastErasedColor;
+    }
+  }
+
+  function redrawCanvas() {
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.fillStyle = canvasBgColor;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(view.offsetX, view.offsetY);
+    ctx.rotate(view.angle);
+    ctx.scale(view.scale, view.scale);
+    ctx.textBaseline = 'middle';
+    for (let layer of layers) {
+      if (!layer.visible) continue;
+      ctx.save();
+      if (layer.transform) {
+        ctx.translate(layer.transform.x || 0, layer.transform.y || 0);
+        ctx.rotate((layer.transform.rot || 0) * Math.PI / 180);
+      }
+      ctx.globalCompositeOperation = layer.blendMode;
+      const layerAlpha = layer.opacity ?? 1;
+      const layerFont = layer.font || "'Playfair Display', serif";
+      const layerGrain = layer.grain || 0;
+      if (layerGrain > 0) generateGrainPattern(layerGrain);
+      for (let s of layer.stamps) {
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(s.rotation || 0);
+        if (s.type === 'image') {
+          if (s.imgEl) ctx.drawImage(s.imgEl, -s.width/2, -s.height/2, s.width, s.height);
+        } else {
+          ctx.font = `bold ${s.size}px ${layerFont}`;
+          ctx.fillStyle = s.color;
+          ctx.globalAlpha = layerAlpha * (s.opacity ?? 1);
+          ctx.textAlign = textAlign;
+          let xOffset = 0;
+          if (textAlign === 'left') xOffset = -s.size/2;
+          if (textAlign === 'right') xOffset = s.size/2;
+          ctx.fillText(s.text, xOffset, 0);
+          if (layerGrain > 0) {
+            ctx.globalCompositeOperation = 'source-atop';
+            ctx.globalAlpha = layerGrain / 100 * 0.5;
+            ctx.drawImage(grainCanvas, -s.size, -s.size/2, s.size*2, s.size);
+          }
+        }
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    // Highlight selected search match
+    if (searchMatches.length && selectedMatchIndex >= 0 && searchMatches[selectedMatchIndex]) {
+      const match = searchMatches[selectedMatchIndex];
+      ctx.save();
+      ctx.translate(view.offsetX, view.offsetY);
+      ctx.rotate(view.angle);
+      ctx.scale(view.scale, view.scale);
+      ctx.strokeStyle = '#3b82f6';
+      ctx.lineWidth = 3 / view.scale;
+      ctx.beginPath();
+      ctx.rect(match.x - 2, match.y - match.size/2 - 2, match.width + 4, match.size + 4);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    if (toolMode === 'eraser' && getActiveLayer()) {
+      const layer = getActiveLayer();
+      const rad = 8 / view.scale;
+      for (let s of layer.stamps) {
+        if (eraserSubMode === 'word') {
+          ctx.beginPath(); ctx.arc(s.x, s.y, rad, 0, 2*Math.PI);
+          ctx.fillStyle = '#ff4444'; ctx.globalAlpha = 0.2; ctx.fill();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.5; ctx.globalAlpha = 1.0; ctx.stroke();
+        } else {
+          getCharPositions(s, layer.font).forEach(p => {
+            ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, 2*Math.PI);
+            ctx.fillStyle = '#ff4444'; ctx.globalAlpha = 0.2; ctx.fill();
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.5; ctx.globalAlpha = 1.0; ctx.stroke();
+          });
+        }
+      }
+      ctx.globalAlpha = 1.0;
+    }
+    ctx.restore();
+    if (toolMode === 'eraser') updateEraserBubblePositionFromMouse();
+  }
+
+  function saveToHistory() {
+    historyStack = historyStack.slice(0, historyIndex + 1);
+    historyStack.push(JSON.parse(JSON.stringify(layers)));
+    historyIndex = historyStack.length - 1;
+  }
+  function undo() {
+    if (historyIndex > 0) {
+      historyIndex--;
+      layers = JSON.parse(JSON.stringify(historyStack[historyIndex]));
+      activeLayerId = layers[0]?.id || 'layer0';
+      rebuildSpatialIndex();
+      redrawCanvas();
+      renderLayersUI();
+    }
+  }
+  function redo() {
+    if (historyIndex < historyStack.length - 1) {
+      historyIndex++;
+      layers = JSON.parse(JSON.stringify(historyStack[historyIndex]));
+      activeLayerId = layers[0]?.id || 'layer0';
+      rebuildSpatialIndex();
+      redrawCanvas();
+      renderLayersUI();
+    }
+  }
+
+  // ----- UI Builders -----
+  const brushLeft = document.createElement('div'); brushLeft.className = 'brush-left';
+  const brushRight = document.createElement('div'); brushRight.className = 'brush-right';
+  const brushSection = document.createElement('div'); brushSection.className = 'brush-settings-row';
+  brushSection.appendChild(brushLeft); brushSection.appendChild(brushRight);
+
+  const togglesRow = document.createElement('div'); togglesRow.className = 'toggles-row';
+  const flowToggle = document.createElement('button'); flowToggle.textContent = '🤏 Flow'; flowToggle.className = 'icon-btn';
+  flowToggle.addEventListener('click', () => { wordFlowEnabled = !wordFlowEnabled; flowToggle.classList.toggle('active', wordFlowEnabled); liveBrushPreview(); });
+  const quoteToggle = document.createElement('button'); quoteToggle.textContent = currentFetcher.icon + ' ' + currentFetcher.name; quoteToggle.className = 'icon-btn';
+  const fetcherDropdownBtn = document.createElement('button'); fetcherDropdownBtn.textContent = '▼'; fetcherDropdownBtn.className = 'icon-btn';
+  fetcherDropdownBtn.style.padding = '6px 8px';
+  const historyToggle = document.createElement('button'); historyToggle.textContent = '📜 History'; historyToggle.className = 'icon-btn';
+  const saveToggle = document.createElement('button'); saveToggle.textContent = '💾'; saveToggle.className = 'icon-btn';
+  togglesRow.appendChild(flowToggle);
+  togglesRow.appendChild(quoteToggle);
+  togglesRow.appendChild(fetcherDropdownBtn);
+  togglesRow.appendChild(historyToggle);
+  togglesRow.appendChild(saveToggle);
+  brushLeft.appendChild(togglesRow);
+
+  const knobsGrid = document.createElement('div'); knobsGrid.className = 'knobs-grid';
+  const sizeKnob = new Knob(knobsGrid, 'Size', 16, 96, 1, brushSize, v => { brushSize = v; liveBrushPreview(); });
+  const sizeJitterKnob = new Knob(knobsGrid, 'Size Jitter', 0, 100, 1, sizeJitter, v => { sizeJitter = v; liveBrushPreview(); });
+  const scatterKnob = new Knob(knobsGrid, 'Scatter', 0, 40, 1, scatter, v => { scatter = v; liveBrushPreview(); });
+  const rotationKnob = new Knob(knobsGrid, 'Rotation', 0, 360, 1, rotationJitter, v => { rotationJitter = v; liveBrushPreview(); });
+  const flowKnob = new Knob(knobsGrid, 'Distance', 5, 60, 1, flowSpacing, v => { flowSpacing = v; });
+  brushRight.appendChild(knobsGrid);
+
+  const previewContainer = document.createElement('div'); previewContainer.className = 'preview-container';
+  const livePreviewCanvas = document.createElement('canvas'); livePreviewCanvas.width = 300; livePreviewCanvas.height = 80; livePreviewCanvas.className = 'live-preview-mini';
+  const livePreviewCtx = livePreviewCanvas.getContext('2d');
+  const alignmentDots = document.createElement('div'); alignmentDots.className = 'alignment-dots';
+  const dotLeft = document.createElement('div'); dotLeft.className = 'align-dot'; dotLeft.textContent = '←'; dotLeft.title = 'Left align';
+  const dotCenter = document.createElement('div'); dotCenter.className = 'align-dot active'; dotCenter.textContent = '•'; dotCenter.title = 'Center align';
+  const dotRight = document.createElement('div'); dotRight.className = 'align-dot'; dotRight.textContent = '→'; dotRight.title = 'Right align';
+  alignmentDots.appendChild(dotLeft); alignmentDots.appendChild(dotCenter); alignmentDots.appendChild(dotRight);
+  previewContainer.appendChild(livePreviewCanvas);
+  previewContainer.appendChild(alignmentDots);
+  brushLeft.appendChild(previewContainer);
+
+  dotLeft.addEventListener('click', () => { textAlign = 'left'; updateAlignDots(); liveBrushPreview(); });
+  dotCenter.addEventListener('click', () => { textAlign = 'center'; updateAlignDots(); liveBrushPreview(); });
+  dotRight.addEventListener('click', () => { textAlign = 'right'; updateAlignDots(); liveBrushPreview(); });
+  function updateAlignDots() {
+    dotLeft.classList.toggle('active', textAlign === 'left');
+    dotCenter.classList.toggle('active', textAlign === 'center');
+    dotRight.classList.toggle('active', textAlign === 'right');
+  }
+
+  function liveBrushPreview() {
+    livePreviewCtx.clearRect(0, 0, 300, 80);
+    livePreviewCtx.fillStyle = '#f8fafc';
+    livePreviewCtx.fillRect(0, 0, 300, 80);
+    const text = brushTextarea.value.trim() || 't';
+    const layer = getActiveLayer() || { font: "'Playfair Display', serif", grain: 0 };
+    livePreviewCtx.font = `${brushSize}px ${layer.font}`;
+    livePreviewCtx.textAlign = textAlign;
+    livePreviewCtx.textBaseline = 'middle';
+    let x = 150;
+    if (textAlign === 'left') x = 30;
+    if (textAlign === 'right') x = 270;
+    for (let i=0; i<3; i++) {
+      const off = getScatterOffset();
+      const sz = getCurrentSize();
+      const rot = getRotationRadians();
+      const col = getCurrentColor();
+      livePreviewCtx.save();
+      livePreviewCtx.translate(x + off.x*0.3, 40 + off.y*0.3);
+      livePreviewCtx.rotate(rot);
+      livePreviewCtx.font = `bold ${sz}px ${layer.font}`;
+      livePreviewCtx.fillStyle = col;
+      livePreviewCtx.globalAlpha = currentOpacity;
+      livePreviewCtx.fillText(text, 0, 0);
+      livePreviewCtx.restore();
+    }
+  }
+
+  fetchers.forEach(f => {
+    const item = document.createElement('div'); item.className = 'dropdown-item';
+    item.textContent = f.icon + ' ' + f.name;
+    item.addEventListener('click', () => {
+      currentFetcher = f;
+      quoteToggle.textContent = f.icon + ' ' + f.name;
+      fetcherDropdown.style.display = 'none';
+      updateQuotePanelForFetcher(f);
+    });
+    fetcherDropdown.appendChild(item);
+  });
+  fetcherDropdownBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const rect = fetcherDropdownBtn.getBoundingClientRect();
+    fetcherDropdown.style.left = rect.left + 'px';
+    fetcherDropdown.style.top = (rect.bottom + 4) + 'px';
+    fetcherDropdown.style.display = fetcherDropdown.style.display === 'flex' ? 'none' : 'flex';
+  });
+  document.addEventListener('click', () => fetcherDropdown.style.display = 'none');
+
+  const topAreas = document.createElement('div'); topAreas.style.display='flex'; topAreas.style.flexDirection='column'; topAreas.style.gap='8px';
+  const quoteArea = document.createElement('div'); quoteArea.className = 'top-toggle-area'; quoteArea.dataset.toggle = 'quote';
+  const quoteDisplay = document.createElement('div'); quoteDisplay.className = 'quote-display';
+  const quoteActions = document.createElement('div'); quoteActions.className = 'quote-actions';
+  const fetchQuoteBtn = document.createElement('button'); fetchQuoteBtn.textContent = '🌾 Tap'; fetchQuoteBtn.className = 'icon-btn fetch-btn';
+  const writeQuoteBtn = document.createElement('button'); writeQuoteBtn.textContent = '✍️'; writeQuoteBtn.className = 'icon-btn';
+  const arrowSpan = document.createElement('span'); arrowSpan.textContent = '→'; arrowSpan.style.fontSize = '1.2rem';
+  const searchInput = document.createElement('input'); searchInput.type = 'text'; searchInput.placeholder = 'Search...'; searchInput.style.display = 'none'; searchInput.style.padding = '4px 8px'; searchInput.style.borderRadius = '40px'; searchInput.style.border = '0.5px solid rgba(0,0,0,0.1)';
+  const genreSelect = document.createElement('select'); genreSelect.style.display = 'none'; genreSelect.className = 'compact-select';
+  ['Pop','Rock','Hip Hop','Country','Jazz','Electronic'].forEach(g => { const o = document.createElement('option'); o.value = g; o.textContent = g; genreSelect.appendChild(o); });
+  const customNameInput = document.createElement('input'); customNameInput.type = 'text'; customNameInput.placeholder = 'Custom name'; customNameInput.style.display = 'none'; customNameInput.style.padding = '4px 8px'; customNameInput.style.borderRadius = '40px'; customNameInput.style.border = '0.5px solid rgba(0,0,0,0.1)';
+  quoteActions.appendChild(searchInput); quoteActions.appendChild(genreSelect); quoteActions.appendChild(customNameInput);
+  quoteActions.appendChild(fetchQuoteBtn); quoteActions.appendChild(arrowSpan); quoteActions.appendChild(writeQuoteBtn);
+  quoteArea.appendChild(quoteDisplay); quoteArea.appendChild(quoteActions);
+
+  function updateQuotePanelForFetcher(f) {
+    searchInput.style.display = f.hasSearch ? 'block' : 'none';
+    genreSelect.style.display = f.hasGenre ? 'block' : 'none';
+    customNameInput.style.display = f.hasCustomName ? 'block' : 'none';
+  }
+
+  const historyArea = document.createElement('div'); historyArea.className = 'top-toggle-area'; historyArea.dataset.toggle = 'history';
+  const historyList = document.createElement('div'); historyList.className = 'history-list';
+  historyArea.appendChild(historyList);
+  const eraserSubpanel = document.createElement('div'); eraserSubpanel.className = 'eraser-subpanel';
+  topAreas.appendChild(quoteArea); topAreas.appendChild(historyArea); topAreas.appendChild(eraserSubpanel);
+
+  // Search panel
+  const searchPanel = document.createElement('div'); searchPanel.className = 'search-panel';
+  const searchRow1 = document.createElement('div'); searchRow1.className = 'search-row';
+  const searchField = document.createElement('input'); searchField.type = 'text'; searchField.placeholder = 'Find (regex)'; searchField.className = 'search-input';
+  searchRow1.appendChild(searchField);
+  const searchRow2 = document.createElement('div'); searchRow2.className = 'search-row';
+  const replaceField = document.createElement('input'); replaceField.type = 'text'; replaceField.placeholder = 'Replace with'; replaceField.className = 'search-input';
+  searchRow2.appendChild(replaceField);
+  const searchActions = document.createElement('div'); searchActions.className = 'search-actions';
+  const matchCounter = document.createElement('span'); matchCounter.style.fontSize = '0.8rem'; matchCounter.textContent = '0 matches';
+  const findBtn = document.createElement('button'); findBtn.textContent = '🔍 Find'; findBtn.className = 'icon-btn';
+  searchActions.appendChild(matchCounter); searchActions.appendChild(findBtn);
+  const replaceActions = document.createElement('div'); replaceActions.className = 'search-actions';
+  const replaceSelectedBtn = document.createElement('button'); replaceSelectedBtn.textContent = 'Replace'; replaceSelectedBtn.className = 'icon-btn';
+  const replaceAllBtn = document.createElement('button'); replaceAllBtn.textContent = 'Replace All'; replaceAllBtn.className = 'icon-btn';
+  replaceActions.appendChild(replaceSelectedBtn); replaceActions.appendChild(replaceAllBtn);
+  const searchResultsDiv = document.createElement('div'); searchResultsDiv.className = 'search-results';
+  searchPanel.appendChild(searchRow1); searchPanel.appendChild(searchRow2);
+  searchPanel.appendChild(searchActions); searchPanel.appendChild(replaceActions);
+  searchPanel.appendChild(searchResultsDiv);
+
+  function performSearch() {
+    const pattern = searchField.value;
+    if (!pattern) { searchMatches = []; matchCounter.textContent = '0 matches'; searchResultsDiv.innerHTML = ''; selectedMatchIndex = -1; redrawCanvas(); return; }
+    let regex;
+    try { regex = new RegExp(pattern, 'gi'); } catch(e) { return; }
+    searchMatches = [];
+    layers.forEach(layer => {
+      if (!layer.visible) return;
+      const layerFont = layer.font || "'Playfair Display', serif";
+      layer.stamps.forEach(stamp => {
+        if (stamp.type !== 'text') return;
+        const matches = [...stamp.text.matchAll(regex)];
+        ctx.font = `bold ${stamp.size}px ${layerFont}`;
+        matches.forEach(match => {
+          const startIdx = match.index;
+          const matchText = match[0];
+          const beforeText = stamp.text.substring(0, startIdx);
+          const beforeWidth = ctx.measureText(beforeText).width;
+          const matchWidth = ctx.measureText(matchText).width;
+          let xOffset = 0;
+          if (textAlign === 'left') xOffset = -stamp.size/2;
+          else if (textAlign === 'right') xOffset = stamp.size/2;
+          const startX = stamp.x + beforeWidth + xOffset;
+          searchMatches.push({ layerId: layer.id, stamp, matchText, index: startIdx, x: startX, y: stamp.y, width: matchWidth, size: stamp.size });
+        });
+      });
+    });
+    matchCounter.textContent = `${searchMatches.length} matches`;
+    renderSearchResults();
+    selectedMatchIndex = -1;
+    redrawCanvas();
+  }
+
+  function renderSearchResults() {
+    searchResultsDiv.innerHTML = '';
+    searchMatches.forEach((match, idx) => {
+      const item = document.createElement('div');
+      item.className = 'search-result-item';
+      item.textContent = `${match.matchText} (${match.stamp.text.substring(0,20)}…)`;
+      item.addEventListener('click', () => {
+        selectedMatchIndex = idx;
+        redrawCanvas();
+        // center view on match
+        view.offsetX = canvas.width/2 - match.x * view.scale;
+        view.offsetY = canvas.height/2 - match.y * view.scale;
+        redrawCanvas();
+      });
+      searchResultsDiv.appendChild(item);
+    });
+  }
+
+  findBtn.addEventListener('click', performSearch);
+  searchField.addEventListener('keydown', (e) => { if (e.key === 'Enter') performSearch(); });
+  replaceSelectedBtn.addEventListener('click', () => {
+    if (selectedMatchIndex === -1 || !searchMatches[selectedMatchIndex]) return;
+    const match = searchMatches[selectedMatchIndex];
+    const stamp = match.stamp;
+    const replaceText = replaceField.value;
+    const newText = stamp.text.substring(0, match.index) + replaceText + stamp.text.substring(match.index + match.matchText.length);
+    stamp.text = newText;
+    charPosCache.delete(`${stamp.text}|${stamp.size}|${getActiveLayer()?.font || "'Playfair Display', serif"}`);
+    saveToHistory();
+    performSearch();
+    redrawCanvas();
+  });
+  replaceAllBtn.addEventListener('click', () => {
+    if (searchMatches.length === 0) return;
+    const replaceText = replaceField.value;
+    [...searchMatches].sort((a,b) => b.index - a.index).forEach(match => {
+      const stamp = match.stamp;
+      stamp.text = stamp.text.substring(0, match.index) + replaceText + stamp.text.substring(match.index + match.matchText.length);
+    });
+    saveToHistory();
+    performSearch();
+    redrawCanvas();
+  });
+
+  // Update button text based on replace field
+  replaceField.addEventListener('input', () => {
+    const isEmpty = replaceField.value.trim() === '';
+    replaceSelectedBtn.textContent = isEmpty ? 'Delete' : 'Replace';
+    replaceAllBtn.textContent = isEmpty ? 'Delete All' : 'Replace All';
+  });
+
+  function setToggleOpen(area, btn) {
+    if (openToggle === area) {
+      area.classList.remove('show'); btn.classList.remove('active'); openToggle = null;
+    } else {
+      if (openToggle) { openToggle.classList.remove('show'); document.querySelector(`[data-toggle="${openToggle.dataset.toggle}"]`)?.classList.remove('active'); }
+      area.classList.add('show'); btn.classList.add('active'); openToggle = area;
+    }
+  }
+  quoteToggle.addEventListener('click', () => setToggleOpen(quoteArea, quoteToggle));
+  historyToggle.addEventListener('click', () => { setToggleOpen(historyArea, historyToggle); if (historyArea.classList.contains('show')) updateHistoryList(); });
+  saveToggle.addEventListener('click', () => setToggleOpen(exportPanel, saveToggle));
+
+  // Fetchers (same as before)
+  async function fetchQuotable() { try { const res = await fetch('https://api.quotable.io/random'); const data = await res.json(); return { text: data.content, author: data.author }; } catch { return { text: 'The quick brown fox jumps over the lazy dog.', author: 'Demo' }; } }
+  async function fetchWordOfDay() { try { const res = await fetch('https://random-word-api.herokuapp.com/word?number=1'); const data = await res.json(); const word = data[0]; const defRes = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`); const defData = await defRes.json(); const definition = defData[0]?.meanings[0]?.definitions[0]?.definition || 'No definition'; return { text: `${word}: ${definition}`, author: 'Word of the Day' }; } catch { return { text: 'Serendipity: finding something good without looking for it.', author: 'Word of the Day' }; } }
+  async function fetchAffirmation() { try { const res = await fetch('https://www.affirmations.dev/'); const data = await res.json(); return { text: data.affirmation, author: 'Affirmation' }; } catch { return { text: 'You are capable of amazing things.', author: 'Affirmation' }; } }
+  async function fetchOnThisDay() { const today = new Date(); const month = String(today.getMonth() + 1).padStart(2, '0'); const day = String(today.getDate()).padStart(2, '0'); const weekday = today.toLocaleDateString('en-US', { weekday: 'long' }); const dateStr = `${today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · ${weekday}`; try { const res = await fetch(`https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/events/${month}/${day}`); const data = await res.json(); const events = data.events || []; if (events.length) { const ev = events[Math.floor(Math.random() * events.length)]; return { text: ev.text, author: `${ev.year} · ${dateStr}` }; } return { text: 'No notable events today.', author: dateStr }; } catch { return { text: 'Could not fetch events.', author: dateStr }; } }
+  async function fetchLyrics() { const searchTerm = searchInput.value.trim(); const genre = genreSelect.value; const songDB = { Pop: [['Taylor Swift', 'Shake It Off'], ['Adele', 'Hello']], Rock: [['Queen', 'Bohemian Rhapsody']], 'Hip Hop': [['Kendrick Lamar', 'HUMBLE.']], Country: [['Johnny Cash', 'Hurt']], Jazz: [['Frank Sinatra', 'Fly Me To The Moon']], Electronic: [['Daft Punk', 'Get Lucky']] }; let artist, title; if (searchTerm) { for (let g in songDB) { const match = songDB[g].find(([a,t]) => a.toLowerCase().includes(searchTerm.toLowerCase()) || t.toLowerCase().includes(searchTerm.toLowerCase())); if (match) { [artist, title] = match; break; } } } if (!artist) { const genreSongs = songDB[genre] || songDB.Pop; [artist, title] = genreSongs[Math.floor(Math.random() * genreSongs.length)]; } try { const res = await fetch(`https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`); const data = await res.json(); const lines = data.lyrics.split('\n').filter(l => l.trim()); const snippet = lines.slice(0, 4).join('\n'); return { text: snippet, author: `${artist} - ${title}` }; } catch { return { text: 'Lyrics not found.', author: `${artist} - ${title}` }; } }
+  async function fetchRandomEmojis() { const emojis = allEmojis; const count = 4 + Math.floor(Math.random() * 3); let result = ''; for (let i=0; i<count; i++) result += emojis[Math.floor(Math.random() * emojis.length)]; return { text: result, author: 'Story-ish' }; }
+  async function fetchProverb() { try { const res = await fetch('https://api.quotable.io/random?tags=wisdom'); const data = await res.json(); return { text: data.content, author: data.author }; } catch { return { text: 'A journey of a thousand miles begins with a single step.', author: 'Proverb' }; } }
+  async function fetchAdvice() { try { const res = await fetch('https://api.adviceslip.com/advice'); const data = await res.json(); return { text: data.slip.advice, author: 'Advice Slip' }; } catch { return { text: 'Look before you leap.', author: 'Advice' }; } }
+  async function fetchDadJoke() { try { const res = await fetch('https://icanhazdadjoke.com/', { headers: { Accept: 'text/plain' } }); const text = await res.text(); return { text, author: 'Dad Joke' }; } catch { return { text: 'What do you call fake spaghetti? An impasta!', author: 'Dad Joke' }; } }
+  async function fetchBored() { try { const res = await fetch('https://www.boredapi.com/api/activity/'); const data = await res.json(); return { text: data.activity, author: `Bored · ${data.type}` }; } catch { return { text: 'Learn to juggle.', author: 'What Now' }; } }
+  async function fetchCorporate() { try { const res = await fetch('https://corporatebs-generator.sameerkumar.website/'); const data = await res.json(); return { text: data.phrase, author: 'Corporate BS' }; } catch { return { text: 'Synergize scalable e-markets.', author: 'Corporate BS' }; } }
+  async function fetchKanyeTrump() { try { const r1 = await fetch('https://api.kanye.rest/'); const k = await r1.json(); const r2 = await fetch('https://api.whatdoestrumpthink.com/api/v1/quotes/random'); const t = await r2.json(); const mix = Math.random() > 0.5 ? `Kanye: ${k.quote}` : `Trump: ${t.message}`; return { text: mix, author: 'Kanye / Trump' }; } catch { return { text: 'I am the greatest.', author: 'Kanye/Trump' }; } }
+  async function fetchProgramming() { try { const res = await fetch('https://programming-quotes-api.azurewebsites.net/api/quotes/random'); const data = await res.json(); return { text: data.text, author: data.author }; } catch { return { text: 'Talk is cheap. Show me the code.', author: 'Linus Torvalds' }; } }
+  async function fetchChuckNorris() { try { const res = await fetch('https://api.chucknorris.io/jokes/random'); const data = await res.json(); let text = data.value; const customName = customNameInput.value.trim(); if (customName) text = text.replace(/Chuck Norris/gi, customName); return { text, author: customName || 'Chuck Norris' }; } catch { return { text: 'Chuck Norris can divide by zero.', author: 'Chuck Norris' }; } }
+  async function fetchRecipe() { try { const res = await fetch('https://www.themealdb.com/api/json/v1/1/random.php'); const data = await res.json(); const meal = data.meals[0]; const steps = meal.strInstructions.split('.').filter(s => s.trim()).slice(0, 3).join('. '); return { text: `${meal.strMeal}: ${steps}`, author: 'Next Step' }; } catch { return { text: 'Spaghetti Carbonara: Cook pasta, mix eggs and cheese, combine with pancetta.', author: 'Next Step' }; } }
+
+  async function loadQuote() {
+    fetchQuoteBtn.disabled = true;
+    quoteDisplay.innerHTML = '<div class="grass-loader"><span class="grass-blade">🌾</span><span class="grass-blade">🌿</span><span class="grass-blade">🍃</span></div>';
+    try {
+      const { text, author } = await currentFetcher.fetcher();
+      currentQuoteText = text;
+      quoteDisplay.textContent = `“${text.substring(0,120)}${text.length>120?'…':''}”`;
+      fetchQuoteBtn.textContent = author || currentFetcher.name;
+    } catch (e) {
+      quoteDisplay.textContent = '⚠️ failed to fetch.';
+      fetchQuoteBtn.textContent = '🌾 Tap';
+    }
+    fetchQuoteBtn.disabled = false;
+  }
+  fetchQuoteBtn.addEventListener('click', loadQuote);
+  writeQuoteBtn.addEventListener('click', () => { if (currentQuoteText) { brushTextarea.value = currentQuoteText; expandTextInput(); } });
+
+  function addToHistory(text) { if (!text.trim()) return; textHistory = textHistory.filter(t => t !== text); textHistory.unshift(text); if (textHistory.length > 20) textHistory.pop(); updateHistoryList(); }
+  function updateHistoryList() {
+    historyList.innerHTML = '';
+    textHistory.forEach(t => {
+      const item = document.createElement('div'); item.className = 'history-item'; item.textContent = t.length > 20 ? t.slice(0,20)+'…' : t;
+      item.addEventListener('click', () => { brushTextarea.value = t; expandTextInput(); });
+      historyList.appendChild(item);
+    });
+  }
+
+  const exportPanel = document.createElement('div'); exportPanel.className = 'export-panel'; exportPanel.dataset.toggle = 'save';
+  const exportBtns = document.createElement('div'); exportBtns.className = 'export-options';
+  const svgBtn = document.createElement('button'); svgBtn.textContent = 'SVG'; svgBtn.className = 'export-btn';
+  const pngBtn = document.createElement('button'); pngBtn.textContent = 'PNG'; pngBtn.className = 'export-btn';
+  const jpegBtn = document.createElement('button'); jpegBtn.textContent = 'JPEG'; jpegBtn.className = 'export-btn';
+  const saveProjBtn = document.createElement('button'); saveProjBtn.textContent = '💾 .tinted'; saveProjBtn.className = 'export-btn';
+  const loadProjInput = document.createElement('input'); loadProjInput.type = 'file'; loadProjInput.accept = '.tinted,application/json'; loadProjInput.style.display = 'none';
+  const loadProjBtn = document.createElement('button'); loadProjBtn.textContent = '📂 Load'; loadProjBtn.className = 'export-btn';
+  exportBtns.appendChild(svgBtn); exportBtns.appendChild(pngBtn); exportBtns.appendChild(jpegBtn);
+  exportBtns.appendChild(saveProjBtn); exportBtns.appendChild(loadProjBtn);
+  const exportOpts = document.createElement('div'); exportOpts.className = 'export-toggle';
+  const visibleRadio = document.createElement('input'); visibleRadio.type = 'radio'; visibleRadio.name = 'exportRange'; visibleRadio.value = 'visible'; visibleRadio.checked = true; visibleRadio.className = 'glass-check';
+  const allRadio = document.createElement('input'); allRadio.type = 'radio'; allRadio.name = 'exportRange'; allRadio.value = 'all'; allRadio.className = 'glass-check';
+  const transparentChk = document.createElement('input'); transparentChk.type = 'checkbox'; transparentChk.id = 'transparentChk'; transparentChk.className = 'glass-check';
+  exportOpts.appendChild(visibleRadio); exportOpts.appendChild(document.createTextNode('Visible'));
+  exportOpts.appendChild(allRadio); exportOpts.appendChild(document.createTextNode('All'));
+  exportOpts.appendChild(transparentChk); exportOpts.appendChild(document.createTextNode('Transparent BG'));
+  exportPanel.appendChild(exportBtns); exportPanel.appendChild(exportOpts);
+  topAreas.appendChild(exportPanel);
+
+  function exportAs(format, exportAll, transparent) {
+    const stamps = layers.flatMap(l => l.visible ? l.stamps.filter(s => s.type !== 'image') : []);
+    if (!stamps.length) { alert('No stamps'); return; }
+    let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+    if (!exportAll) { const tl = screenToWorld(0,0), br = screenToWorld(canvas.width, canvas.height); minX=tl.x; minY=tl.y; maxX=br.x; maxY=br.y; }
+    else { stamps.forEach(s => { const w=s.size||brushSize; minX=Math.min(minX, s.x-w/2); maxX=Math.max(maxX, s.x+w/2); minY=Math.min(minY, s.y-w/2); maxY=Math.max(maxY, s.y+w/2); }); }
+    const w = maxX-minX, h = maxY-minY;
+    if (format==='svg') {
+      let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX} ${minY} ${w} ${h}" width="${w}" height="${h}">`;
+      stamps.forEach(s => { svg += `<text x="${s.x}" y="${s.y}" transform="rotate(${(s.rotation||0)*180/Math.PI},${s.x},${s.y})" font-family="${getActiveLayer()?.font || currentFont}" font-size="${s.size}" fill="${s.color}" opacity="${s.opacity}" text-anchor="${textAlign}" dominant-baseline="middle">${s.text}</text>`; });
+      svg += '</svg>'; const blob = new Blob([svg], {type: 'image/svg+xml'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tinted.svg'; a.click();
+    } else {
+      const off = document.createElement('canvas'); off.width = w; off.height = h; const octx = off.getContext('2d');
+      if (!transparent) { octx.fillStyle = canvasBgColor; octx.fillRect(0,0,w,h); }
+      octx.translate(-minX, -minY);
+      stamps.forEach(s => { octx.save(); octx.translate(s.x, s.y); octx.rotate(s.rotation||0); octx.font = `bold ${s.size}px ${getActiveLayer()?.font || currentFont}`; octx.fillStyle = s.color; octx.globalAlpha = s.opacity; octx.textAlign = textAlign; octx.textBaseline = 'middle'; let xo = 0; if (textAlign==='left') xo = -s.size/2; if (textAlign==='right') xo = s.size/2; octx.fillText(s.text, xo, 0); octx.restore(); });
+      const url = off.toDataURL(`image/${format}`); const a = document.createElement('a'); a.href = url; a.download = `tinted.${format}`; a.click();
+    }
+  }
+  svgBtn.addEventListener('click', ()=>exportAs('svg', allRadio.checked));
+  pngBtn.addEventListener('click', ()=>exportAs('png', allRadio.checked, transparentChk.checked));
+  jpegBtn.addEventListener('click', ()=>exportAs('jpeg', allRadio.checked));
+
+  function saveProject() {
+    const project = { version: 1, layers: layers.map(l => ({ ...l, stamps: l.stamps.map(s => { const { imgEl, ...rest } = s; return rest; }) })), view, canvasBgColor,
+      brushSettings: { brushSize, sizeJitter, scatter, rotationJitter, flowSpacing, wordFlowEnabled, textAlign },
+      colorSettings: { currentL, currentC, currentH, currentOpacity, colorJitter, gamutLock } };
+    const blob = new Blob([JSON.stringify(project)], {type: 'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'project.tinted'; a.click();
+  }
+  function loadProject(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const p = JSON.parse(e.target.result); if (!p.version) throw new Error('Missing version');
+        layers = p.layers; view = p.view; canvasBgColor = p.canvasBgColor;
+        ({ brushSize, sizeJitter, scatter, rotationJitter, flowSpacing, wordFlowEnabled, textAlign } = p.brushSettings);
+        ({ currentL, currentC, currentH, currentOpacity, colorJitter, gamutLock } = p.colorSettings);
+        sizeKnob.setValue(brushSize); sizeJitterKnob.setValue(sizeJitter); scatterKnob.setValue(scatter); rotationKnob.setValue(rotationJitter); flowKnob.setValue(flowSpacing);
+        flowToggle.classList.toggle('active', wordFlowEnabled); updateAlignDots();
+        if (lSlider) { lSlider.value = currentL; cSlider.value = currentC; hSlider.value = currentH; colorOpacitySlider.value = currentOpacity*100; colorJitterSlider.value = colorJitter; gamutToggle.classList.toggle('active', gamutLock); updateColorFromSliders(); }
+        activeLayerId = layers[0]?.id || 'layer0';
+        layers.forEach(l => l.stamps.forEach(s => { if (s.type === 'image' && s.imgData) { const img = new Image(); img.src = s.imgData; s.imgEl = img; } }));
+        rebuildSpatialIndex(); redrawCanvas(); renderLayersUI(); saveToHistory();
+      } catch(ex) { alert('Invalid project file: ' + ex.message); }
+    };
+    reader.readAsText(file);
+  }
+  saveProjBtn.addEventListener('click', saveProject); loadProjBtn.addEventListener('click', ()=>loadProjInput.click()); loadProjInput.addEventListener('change', e=> { if(e.target.files[0]) loadProject(e.target.files[0]); });
+
+  const lSlider = document.createElement('input'); lSlider.type='range'; lSlider.min=0; lSlider.max=1; lSlider.step=0.01; lSlider.value=0.7; lSlider.style.background = 'linear-gradient(90deg, #000, #fff)';
+  const cSlider = document.createElement('input'); cSlider.type='range'; cSlider.min=0; cSlider.max=0.4; cSlider.step=0.01; cSlider.value=0.15; cSlider.style.background = 'linear-gradient(90deg, #ccc, #3b82f6)';
+  const hSlider = document.createElement('input'); hSlider.type='range'; hSlider.min=0; hSlider.max=360; hSlider.step=1; hSlider.value=240; hSlider.style.background = 'linear-gradient(90deg, red, yellow, lime, cyan, blue, magenta, red)';
+  const colorOpacitySlider = document.createElement('input'); colorOpacitySlider.type='range'; colorOpacitySlider.min=0; colorOpacitySlider.max=100; colorOpacitySlider.value=100;
+  const colorJitterSlider = document.createElement('input'); colorJitterSlider.type='range'; colorJitterSlider.min=0; colorJitterSlider.max=100; colorJitterSlider.value=0;
+  const varianceGrid = document.createElement('div'); varianceGrid.className = 'color-variance-grid';
+  const sassyToast = document.createElement('div'); sassyToast.className = 'sassy-toast';
+  const colorPreviewDiv = document.createElement('div'); colorPreviewDiv.className = 'color-preview';
+  const previewColorSpan = document.createElement('div'); previewColorSpan.className = 'preview-color';
+  const previewBtns = document.createElement('div'); previewBtns.className = 'preview-buttons';
+  const eyedropperPickBtn = document.createElement('button'); eyedropperPickBtn.textContent='👁️ Pick'; eyedropperPickBtn.className='preview-btn';
+  const bgBtn = document.createElement('button'); bgBtn.textContent='BG'; bgBtn.className='preview-btn';
+  const gamutToggle = document.createElement('button'); gamutToggle.textContent = gamutLock ? '🍁 Natural' : '🦠 Digital'; gamutToggle.className='preview-btn';
+  gamutToggle.addEventListener('click', () => { gamutLock = !gamutLock; gamutToggle.textContent = gamutLock ? '🍁 Natural' : '🦠 Digital'; gamutToggle.classList.toggle('active', gamutLock); updateColorFromSliders(); });
+  previewBtns.appendChild(eyedropperPickBtn); previewBtns.appendChild(bgBtn); previewBtns.appendChild(gamutToggle);
+  colorPreviewDiv.appendChild(previewColorSpan); colorPreviewDiv.appendChild(previewBtns);
+
+  function addSlider(parent, label, slider, id) {
+    const g = document.createElement('div'); g.className='slider-group'; const d = document.createElement('div'); d.className='slider-label';
+    const span = document.createElement('span'); span.id = id; d.innerHTML = `<span>${label}</span>`; d.appendChild(span); g.appendChild(d); g.appendChild(slider); parent.appendChild(g); return span;
+  }
+
+  function updateVariancePreview(jitter) {
+    varianceGrid.innerHTML = ''; const baseColor = oklchToRgb(currentL, currentC, currentH) || '#3b82f6';
+    for (let i=0; i<5; i++) {
+      const l = Math.min(1, Math.max(0, currentL + (Math.random()-0.5)*(jitter/100)*0.3));
+      const c = Math.min(0.4, Math.max(0, currentC + (Math.random()-0.5)*(jitter/100)*0.2));
+      const h = (currentH + (Math.random()-0.5)*(jitter/100)*360 + 360) % 360;
+      const col = oklchToRgb(l, c, h) || baseColor; const swatch = document.createElement('div'); swatch.className = 'variance-swatch'; swatch.style.backgroundColor = col; varianceGrid.appendChild(swatch);
+    }
+  }
+
+  function updateColorFromSliders() {
+    currentL = +lSlider.value; currentC = +cSlider.value; currentH = +hSlider.value; currentOpacity = colorOpacitySlider.value/100; colorJitter = +colorJitterSlider.value;
+    let hex;
+    if (gamutLock) {
+      hex = oklchToRgb(currentL, currentC, currentH);
+      if (!hex) {
+        const clamped = clampToGamut(currentL, currentC, currentH);
+        if (Math.abs(clamped.l - currentL) > 0.001) lSlider.value = currentL = clamped.l;
+        if (Math.abs(clamped.c - currentC) > 0.001) cSlider.value = currentC = clamped.c;
+        hex = oklchToRgb(currentL, currentC, currentH) || '#808080';
+        sassyToast.textContent = 'Out of gamut, clamped!'; sassyToast.style.opacity = 1; setTimeout(() => sassyToast.style.opacity = 0, 2000);
+      }
+    } else { hex = oklchToRgb(currentL, currentC, currentH); }
+    currentColor = hex; colorSwatch.style.backgroundColor = hex; previewColorSpan.style.backgroundColor = hex; previewColorSpan.style.opacity = currentOpacity;
+    if (lValSpan) lValSpan.innerText = currentL.toFixed(2); if (cValSpan) cValSpan.innerText = currentC.toFixed(2); if (hValSpan) hValSpan.innerText = Math.round(currentH);
+    if (opacityValSpan) opacityValSpan.innerText = colorOpacitySlider.value; if (jitterValSpan) jitterValSpan.innerText = colorJitter;
+    updateVariancePreview(colorJitter); liveBrushPreview();
+  }
+  lSlider.addEventListener('input', updateColorFromSliders); cSlider.addEventListener('input', updateColorFromSliders); hSlider.addEventListener('input', updateColorFromSliders);
+  colorOpacitySlider.addEventListener('input', updateColorFromSliders); colorJitterSlider.addEventListener('input', updateColorFromSliders);
+  bgBtn.addEventListener('click', () => { canvasBgColor = currentColor; redrawCanvas(); });
+
+  function activateEyedropper() { eyedropperActive = true; eyedropperBubble.classList.remove('hidden'); eyedropperConfirm.classList.remove('hidden'); canvas.style.cursor = 'none'; }
+  function deactivateEyedropper() { eyedropperActive = false; eyedropperBubble.classList.add('hidden'); eyedropperConfirm.classList.add('hidden'); canvas.style.cursor = 'crosshair'; }
+  function updateEyedropperBubble(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect(); const x = clientX - rect.left, y = clientY - rect.top; if (x<0||y<0||x>=canvas.width||y>=canvas.height) return;
+    const img = ctx.getImageData(x, y, 1, 1); const [r,g,b] = img.data; lastEyedropperColor = `#${((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1)}`; eyedropperBubble.style.borderColor = lastEyedropperColor;
+    const zoomCtx = bubbleZoomCanvas.getContext('2d'); const zoomSize = 30; const srcX = Math.max(0, Math.min(canvas.width-zoomSize, x-zoomSize/2)); const srcY = Math.max(0, Math.min(canvas.height-zoomSize, y-zoomSize/2));
+    const zoomData = ctx.getImageData(srcX, srcY, zoomSize, zoomSize); zoomCtx.clearRect(0,0,140,140); zoomCtx.putImageData(zoomData, 55, 55);
+    zoomCtx.beginPath(); zoomCtx.strokeStyle='white'; zoomCtx.lineWidth=1.5; zoomCtx.moveTo(70,0); zoomCtx.lineTo(70,140); zoomCtx.moveTo(0,70); zoomCtx.lineTo(140,70); zoomCtx.stroke();
+    zoomCtx.beginPath(); zoomCtx.arc(70,70,5,0,2*Math.PI); zoomCtx.strokeStyle='red'; zoomCtx.stroke();
+    eyedropperBubble.style.left = clientX + 'px'; eyedropperBubble.style.top = clientY + 'px'; eyedropperConfirm.style.left = (clientX+90) + 'px'; eyedropperConfirm.style.top = clientY + 'px';
+  }
+  function confirmPickColor() {
+    if (eyedropperActive) {
+      currentColor = lastEyedropperColor; colorSwatch.style.backgroundColor = lastEyedropperColor; previewColorSpan.style.backgroundColor = lastEyedropperColor;
+      const rgb = lastEyedropperColor.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+      if (rgb) { const oklch = rgbToOklch(parseInt(rgb[1],16), parseInt(rgb[2],16), parseInt(rgb[3],16)); lSlider.value = oklch.l; cSlider.value = oklch.c; hSlider.value = oklch.h; updateColorFromSliders(); }
+      deactivateEyedropper();
+    }
+  }
+  eyedropperPickBtn.addEventListener('click', () => { toolbarContainer.classList.remove('expanded'); activateEyedropper(); });
+  eyedropperConfirm.addEventListener('click', confirmPickColor); eyedropperBubble.addEventListener('click', confirmPickColor);
+
+  const layerListDiv = document.createElement('div'); layerListDiv.className = 'layer-list';
+  const layerControls = document.createElement('div'); layerControls.style.display='flex'; layerControls.style.gap='8px'; layerControls.style.flexWrap='wrap'; layerControls.style.marginTop='8px';
+  const blendSelect = document.createElement('select'); blendSelect.className = 'compact-select';
+  ['normal','multiply','screen','overlay','darken','lighten','color-dodge','color-burn','hard-light','soft-light','difference','exclusion','hue','saturation','color','luminosity'].forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = m; blendSelect.appendChild(o); });
+  blendSelect.addEventListener('change', e => { const l = getActiveLayer(); if (l) { l.blendMode = e.target.value; redrawCanvas(); saveToHistory(); } });
+  const newLayerBtn = document.createElement('button'); newLayerBtn.textContent='➕'; newLayerBtn.className='layer-action-btn';
+  newLayerBtn.addEventListener('click', () => { const id = 'layer_'+Date.now()+'_'+Math.random().toString(36); layers.push({ id, name:'Layer '+(layers.length+1), visible:true, locked:false, stamps:[], blendMode:'normal', opacity:1, transform:{x:0,y:0,rot:0}, font: "'Playfair Display', serif", grain:0 }); activeLayerId = id; rebuildSpatialIndex(); redrawCanvas(); renderLayersUI(); saveToHistory(); });
+  const deleteLayerBtn = document.createElement('button'); deleteLayerBtn.textContent='🗑️'; deleteLayerBtn.className='layer-action-btn';
+  deleteLayerBtn.addEventListener('click', () => { if (layers.length<=1) return; const idx = layers.findIndex(l=>l.id===activeLayerId); layers.splice(idx,1); activeLayerId = layers[Math.min(idx, layers.length-1)].id; rebuildSpatialIndex(); redrawCanvas(); renderLayersUI(); saveToHistory(); });
+  const duplicateLayerBtn = document.createElement('button'); duplicateLayerBtn.textContent='🧦'; duplicateLayerBtn.className='layer-action-btn';
+  duplicateLayerBtn.addEventListener('click', () => { const active = getActiveLayer(); if (active) { const newId = 'layer_'+Date.now()+'_'+Math.random().toString(36); const newLayer = { ...active, id: newId, name: active.name + ' copy', stamps: JSON.parse(JSON.stringify(active.stamps)), transform: { ...active.transform } }; layers.push(newLayer); activeLayerId = newId; rebuildSpatialIndex(); redrawCanvas(); renderLayersUI(); saveToHistory(); } });
+  const mergeDownBtn = document.createElement('button'); mergeDownBtn.textContent='🙏'; mergeDownBtn.className='layer-action-btn';
+  mergeDownBtn.addEventListener('click', () => { const idx = layers.findIndex(l=>l.id===activeLayerId); if (idx>0) { const upper = layers[idx], lower = layers[idx-1]; lower.stamps.push(...upper.stamps); layers.splice(idx,1); activeLayerId = lower.id; rebuildSpatialIndex(); redrawCanvas(); renderLayersUI(); saveToHistory(); } });
+  const isolateBtn = document.createElement('button'); isolateBtn.textContent='🔴'; isolateBtn.className='layer-action-btn';
+  isolateBtn.addEventListener('click', () => { const active = getActiveLayer(); if (!active) return; if (!isolateActive) { previousVisibility = {}; layers.forEach(l => { previousVisibility[l.id] = l.visible; if (l.id !== active.id) l.visible = false; }); isolateActive = true; layersBtn.classList.add('isolate-active'); } else { layers.forEach(l => { if (previousVisibility[l.id] !== undefined) l.visible = previousVisibility[l.id]; }); isolateActive = false; layersBtn.classList.remove('isolate-active'); } renderLayersUI(); redrawCanvas(); });
+  const moveUpBtn = document.createElement('button'); moveUpBtn.textContent='🫴'; moveUpBtn.className='layer-action-btn';
+  moveUpBtn.addEventListener('click', () => { const idx = layers.findIndex(l=>l.id===activeLayerId); if (idx < layers.length-1) { [layers[idx], layers[idx+1]] = [layers[idx+1], layers[idx]]; renderLayersUI(); redrawCanvas(); saveToHistory(); } });
+  const moveDownBtn = document.createElement('button'); moveDownBtn.textContent='🫳'; moveDownBtn.className='layer-action-btn';
+  moveDownBtn.addEventListener('click', () => { const idx = layers.findIndex(l=>l.id===activeLayerId); if (idx > 0) { [layers[idx-1], layers[idx]] = [layers[idx], layers[idx-1]]; renderLayersUI(); redrawCanvas(); saveToHistory(); } });
+  const addImageLayerBtn = document.createElement('button'); addImageLayerBtn.textContent='♠️'; addImageLayerBtn.className='layer-action-btn';
+  addImageLayerBtn.addEventListener('click', () => {
+    const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*';
+    input.onchange = e => { const file = e.target.files[0]; if (!file) return; const reader = new FileReader();
+      reader.onload = ev => { const img = new Image(); img.onload = () => { let w = img.width, h = img.height; const maxDim = 800; if (w > maxDim || h > maxDim) { const s = maxDim / Math.max(w, h); w *= s; h *= s; }
+        const center = screenToWorld(canvas.width/2, canvas.height/2); const newId = 'layer_'+Date.now()+'_'+Math.random().toString(36);
+        const newLayer = { id: newId, name: file.name || 'Image', visible: true, locked: false, stamps: [{ type: 'image', imgData: ev.target.result, imgEl: img, width: w, height: h, x: center.x, y: center.y, rotation: 0, opacity: 1 }], blendMode: 'normal', opacity: 1.0, transform: { x:0, y:0, rot:0 }, font: "'Playfair Display', serif", grain:0 };
+        layers.push(newLayer); activeLayerId = newId; rebuildSpatialIndex(); redrawCanvas(); renderLayersUI(); saveToHistory(); }; img.src = ev.target.result; }; reader.readAsDataURL(file); }; input.click();
+  });
+  layerControls.appendChild(blendSelect); layerControls.appendChild(newLayerBtn); layerControls.appendChild(deleteLayerBtn); layerControls.appendChild(duplicateLayerBtn); layerControls.appendChild(mergeDownBtn); layerControls.appendChild(isolateBtn); layerControls.appendChild(moveUpBtn); layerControls.appendChild(moveDownBtn); layerControls.appendChild(addImageLayerBtn);
+
+  function updateLayersButtonAppearance() {
+    const active = getActiveLayer(); const count = layers.length;
+    if (active && active.locked) { layersBtn.innerHTML = '🔒'; }
+    else if (active && !active.visible) { layersBtn.innerHTML = '🫣'; }
+    else { layersBtn.innerHTML = count; }
+    if (active && active.blendMode !== 'normal') { let sup = layersBtn.querySelector('.blend-sup'); if (!sup) { sup = document.createElement('span'); sup.className = 'blend-sup'; layersBtn.appendChild(sup); } const abbr = { multiply:'×', screen:'S', overlay:'O' }; sup.textContent = abbr[active.blendMode] || active.blendMode.slice(0,2); } else { const sup = layersBtn.querySelector('.blend-sup'); if (sup) sup.remove(); }
+  }
+
+  function renderLayersUI() {
+    layerListDiv.innerHTML = '';
+    layers.forEach(layer => {
+      const div = document.createElement('div'); div.className = `layer-item ${activeLayerId===layer.id?'active':''}`;
+      const fontSelectLayer = document.createElement('select'); fontSelectLayer.className = 'compact-select';
+      ['Playfair Display', 'Space Mono'].forEach(f => { const o = document.createElement('option'); o.value = `'${f}', ${f.includes('Mono')?'monospace':'serif'}`; o.textContent = f; fontSelectLayer.appendChild(o); });
+      fontSelectLayer.value = layer.font || "'Playfair Display', serif";
+      fontSelectLayer.addEventListener('change', e => { layer.font = e.target.value; redrawCanvas(); saveToHistory(); });
+      fontSelectLayer.addEventListener('click', e => e.stopPropagation());
+      const grainKnobLayer = new Knob(document.createElement('div'), '', 0, 100, 1, layer.grain || 0, v => { layer.grain = v; redrawCanvas(); saveToHistory(); });
+      grainKnobLayer.el.style.minWidth = '40px';
+      div.innerHTML = `
+        <div class="layer-main-row"><span>${layer.name} ${!layer.visible?'👁️‍🗨️':''}</span><div class="layer-actions"><button class="layer-vis">👁️</button><button class="layer-lock">${layer.locked?'🔒':'🔓'}</button><button class="layer-rename">F2</button></div></div>
+        <div class="layer-font-row"><span style="font-size:0.6rem;">Font</span><div id="font-container-${layer.id}"></div><span style="font-size:0.6rem; margin-left:8px;">Grain</span><div id="grain-container-${layer.id}"></div></div>
+        <div style="display:flex; align-items:center; gap:4px;"><input type="range" class="layer-opacity-slider" min="0" max="1" step="0.01" value="${layer.opacity??1}" style="flex:1;"><span style="font-size:0.6rem;">${Math.round((layer.opacity??1)*100)}%</span></div>
+        <div class="layer-transform-row"><span style="font-size:0.6rem;">X</span><div class="knob-wheel layer-knob" data-prop="x" style="width:32px;height:32px;"><span class="knob-value">${layer.transform?.x||0}</span></div><span style="font-size:0.6rem;">Y</span><div class="knob-wheel layer-knob" data-prop="y" style="width:32px;height:32px;"><span class="knob-value">${layer.transform?.y||0}</span></div><span style="font-size:0.6rem;">R</span><div class="knob-wheel layer-knob" data-prop="rot" style="width:32px;height:32px;"><span class="knob-value">${layer.transform?.rot||0}°</span></div></div>
+      `;
+      div.querySelector('.layer-vis').onclick = e => { e.stopPropagation(); layer.visible = !layer.visible; redrawCanvas(); renderLayersUI(); updateLayersButtonAppearance(); };
+      div.querySelector('.layer-lock').onclick = e => { e.stopPropagation(); layer.locked = !layer.locked; renderLayersUI(); updateLayersButtonAppearance(); };
+      div.querySelector('.layer-rename').onclick = e => { e.stopPropagation(); const nn = prompt('Rename layer', layer.name); if (nn) { layer.name = nn; renderLayersUI(); } };
+      const slider = div.querySelector('.layer-opacity-slider'); slider.oninput = e => { layer.opacity = +e.target.value; div.querySelector('span:last-child').textContent = Math.round(layer.opacity*100)+'%'; redrawCanvas(); }; slider.onchange = () => saveToHistory();
+      div.addEventListener('click', e => { if (!e.target.closest('button') && !e.target.closest('input') && !e.target.closest('.layer-knob') && !e.target.closest('select')) { activeLayerId = layer.id; renderLayersUI(); redrawCanvas(); updateLayersButtonAppearance(); } });
+      const fontContainer = div.querySelector(`#font-container-${layer.id}`); if (fontContainer) fontContainer.appendChild(fontSelectLayer);
+      const grainContainer = div.querySelector(`#grain-container-${layer.id}`); if (grainContainer) grainContainer.appendChild(grainKnobLayer.el);
+      if (!layer.transform) layer.transform = { x:0, y:0, rot:0 };
+      div.querySelectorAll('.layer-knob').forEach(knob => {
+        const prop = knob.dataset.prop; const valueSpan = knob.querySelector('.knob-value'); let dragging = false, startY, startVal, longPressTimer;
+        const update = (v) => { layer.transform[prop] = Math.min(prop==='rot'?180:500, Math.max(prop==='rot'?-180:-500, v)); valueSpan.textContent = prop==='rot' ? Math.round(layer.transform[prop])+'°' : Math.round(layer.transform[prop]); redrawCanvas(); };
+        const reset = () => { layer.transform[prop] = 0; valueSpan.textContent = prop==='rot' ? '0°' : '0'; redrawCanvas(); };
+        knob.addEventListener('mousedown', e => { e.stopPropagation(); dragging = true; startY = e.clientY; startVal = layer.transform[prop]; longPressTimer = setTimeout(reset, 600); });
+        knob.addEventListener('touchstart', e => { e.stopPropagation(); dragging = true; startY = e.touches[0].clientY; startVal = layer.transform[prop]; longPressTimer = setTimeout(reset, 600); });
+        window.addEventListener('mousemove', e => { if (!dragging) return; clearTimeout(longPressTimer); const delta = (startY - e.clientY) * (prop==='rot'?1:0.5); update(startVal + delta); });
+        window.addEventListener('touchmove', e => { if (!dragging) return; clearTimeout(longPressTimer); const delta = (startY - e.touches[0].clientY) * (prop==='rot'?1:0.5); update(startVal + delta); });
+        window.addEventListener('mouseup', () => { if (dragging) { dragging = false; clearTimeout(longPressTimer); saveToHistory(); } });
+        window.addEventListener('touchend', () => { if (dragging) { dragging = false; clearTimeout(longPressTimer); saveToHistory(); } });
+      });
+      layerListDiv.appendChild(div);
+    });
+    if (getActiveLayer()) blendSelect.value = getActiveLayer().blendMode;
+    updateLayersButtonAppearance();
+  }
+
+  const emojiGrid = document.createElement('div'); emojiGrid.className = 'emoji-grid';
+  const allEmojis = ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','🫠','😉','😊','😇','🥰','😍','🤩','😘','😗','☺️','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🫢','🫣','🤫','🤔','🫡','🤐','🤨','😐','😑','😶','🫥','😶‍🌫️','😏','😒','🙄','😬','😮‍💨','🤥','🫨','🙂‍↔️','🙂‍↕️','😌','😔','😪','🤤','😴','🫤','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','😵‍💫','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','😟','🙁','☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹','👺','👻','👽','👾','🤖','😺','😸','😹','😻','😼','😽','🙀','😿','😾','💋','💌','💘','💝','💖','💗','💓','💞','💕','💟','❣️','💔','❤️‍🔥','❤️‍🩹','❤️','🩷','🧡','💛','💚','💙','🩵','💜','🤎','🖤','🩶','🤍','🫶','🤝','👍','👎','👊','✊','🤛','🤜','👏','🙌','👐','🤲','🙏','✍️','💅','🤳','💪','🦾','🦿','🦵','🦶','👂','🦻','👃','🧠','🦷','🦴','👀','👁️','👄','🫦','👅','👶','🧒','👦','👧','🧑','👩','🧔','🧔‍♂️','🧔‍♀️','👨','👩‍🦰','👨‍🦰','👩‍🦱','👨‍🦱','👩‍🦳','👨‍🦳','👩‍🦲','👨‍🦲','🧑‍🦰','🧑‍🦱','🧑‍🦳','🧑‍🦲','👱','👱‍♂️','👱‍♀️','👴','👵','🙍','🙍‍♂️','🙍‍♀️','🙎','🙎‍♂️','🙎‍♀️','🙅','🙅‍♂️','🙅‍♀️','🙆','🙆‍♂️','🙆‍♀️','💁','💁‍♂️','💁‍♀️','🙋','🙋‍♂️','🙋‍♀️','🧏','🧏‍♂️','🧏‍♀️','🙇','🙇‍♂️','🙇‍♀️','🤦','🤦‍♂️','🤦‍♀️','🤷','🤷‍♂️','🤷‍♀️'];
+  function buildEmojiGrid() {
+    emojiGrid.innerHTML = '';
+    allEmojis.forEach(e => { const b = document.createElement('button'); b.textContent = e; b.onclick = () => { if (multiEmojiEnabled) { brushTextarea.value += e; } else { brushTextarea.value = e; } expandTextInput(); if (!multiEmojiEnabled) { toolbarContainer.classList.remove('expanded'); currentSection = null; multiEmojiToggle.style.display = 'none'; } }; emojiGrid.appendChild(b); });
+  }
+  multiEmojiToggle.addEventListener('click', () => { multiEmojiEnabled = !multiEmojiEnabled; multiEmojiToggle.classList.toggle('active', multiEmojiEnabled); multiEmojiToggle.textContent = multiEmojiEnabled ? 'Add' : 'Replace'; });
+
+  let currentSection = null;
+  function showSection(content, btn) {
+    if (currentSection === btn && toolbarContainer.classList.contains('expanded')) { toolbarContainer.classList.remove('expanded'); currentSection = null; return; }
+    expandContent.innerHTML = '';
+    if (content === 'brush') { expandContent.appendChild(topAreas); expandContent.appendChild(brushSection); }
+    else if (content === 'layers') { expandContent.appendChild(layerListDiv); expandContent.appendChild(layerControls); renderLayersUI(); }
+    else if (content === 'color') {
+      const cont = document.createElement('div'); cont.className = 'expand-inner';
+      lValSpan = addSlider(cont, 'Lightness (L)', lSlider, 'lVal'); cValSpan = addSlider(cont, 'Chroma (C)', cSlider, 'cVal'); hValSpan = addSlider(cont, 'Hue (H)', hSlider, 'hVal');
+      opacityValSpan = addSlider(cont, 'Opacity', colorOpacitySlider, 'colorOpacityVal'); jitterValSpan = addSlider(cont, 'Wildness', colorJitterSlider, 'colorJitterVal');
+      cont.appendChild(varianceGrid); cont.appendChild(sassyToast); cont.appendChild(colorPreviewDiv); expandContent.appendChild(cont); updateColorFromSliders();
+    } else if (content === 'emoji') { expandContent.appendChild(emojiGrid); buildEmojiGrid(); multiEmojiToggle.style.display = 'inline-flex'; }
+    else if (content === 'search') { expandContent.appendChild(searchPanel); }
+    toolbarContainer.classList.add('expanded'); currentSection = btn;
+  }
+  function collapseToolbar() { toolbarContainer.classList.remove('expanded'); currentSection = null; multiEmojiToggle.style.display = 'none'; }
+  layersBtn.addEventListener('click', () => { multiEmojiToggle.style.display = 'none'; showSection('layers', layersBtn); });
+  colorBtn.addEventListener('click', () => { multiEmojiToggle.style.display = 'none'; showSection('color', colorBtn); });
+  emojiBtn.addEventListener('click', () => { deactivateEraser(); showSection('emoji', emojiBtn); });
+  textWrapper.addEventListener('click', () => { deactivateEraser(); if (textWrapper.classList.contains('collapsed')) expandTextInput(); showSection('brush', textWrapper); });
+  function expandTextInput() { textWrapper.classList.remove('collapsed'); textWrapper.classList.add('expanded'); brushTextarea.style.display='block'; brushTextarea.focus(); }
+  function collapseTextInput() { textWrapper.classList.remove('expanded'); textWrapper.classList.add('collapsed'); brushTextarea.style.display='none'; brushTextarea.blur(); }
+  brushTextarea.addEventListener('keydown', e => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); collapseTextInput(); } });
+  function deactivateEraser() { if (toolMode === 'eraser') { toolMode = 'brush'; eraserBtn.classList.remove('eraser-active'); eraserModeToggleContainer.style.display = 'none'; eraserBubble.classList.add('hidden'); redrawCanvas(); } }
+  eraserBtn.addEventListener('click', () => { toolMode = toolMode === 'brush' ? 'eraser' : 'brush'; eraserBtn.classList.toggle('eraser-active', toolMode==='eraser'); eraserModeToggleContainer.style.display = toolMode==='eraser' ? 'flex' : 'none'; eraserBubble.classList.toggle('hidden', toolMode!=='eraser'); if (toolMode === 'eraser') { collapseToolbar(); updateEraserBubblePositionFromMouse(); } redrawCanvas(); });
+  eraserModeWordBtn.addEventListener('click', () => { eraserSubMode = 'word'; eraserModeWordBtn.classList.add('active'); eraserModeLetterBtn.classList.remove('active'); redrawCanvas(); });
+  eraserModeLetterBtn.addEventListener('click', () => { eraserSubMode = 'letter'; eraserModeLetterBtn.classList.add('active'); eraserModeWordBtn.classList.remove('active'); redrawCanvas(); });
+
+  searchToggleBtn.addEventListener('click', () => {
+    searchActive = !searchActive;
+    searchToggleBtn.classList.toggle('active', searchActive);
+    if (searchActive) {
+      showSection('search', searchToggleBtn);
+    } else {
+      if (currentSection === searchToggleBtn) collapseToolbar();
+    }
+  });
+
+  let lastMouseX = 0, lastMouseY = 0;
+  function updateEraserBubblePosition(sx, sy) { const r = ERASER_RADIUS * view.scale; eraserBubble.style.width = (r*2)+'px'; eraserBubble.style.height = (r*2)+'px'; eraserBubble.style.left = sx+'px'; eraserBubble.style.top = sy+'px'; eraserBubble.classList.remove('hidden'); }
+  function updateEraserBubblePositionFromMouse(e) { if (toolMode !== 'eraser') return; let cx, cy; if (e && (e.touches || e.clientX)) { if (e.touches && e.touches[0]) { cx = e.touches[0].clientX; cy = e.touches[0].clientY; } else { cx = e.clientX; cy = e.clientY; } } else { cx = lastMouseX; cy = lastMouseY; } if (cx && cy) { updateEraserBubblePosition(cx, cy); lastMouseX = cx; lastMouseY = cy; } }
+
+  function handleTouchStart(e) { if (eyedropperActive) { e.preventDefault(); return; } e.preventDefault(); const touches = e.touches; if (touches.length === 1 && !isPanning && !isRotating) { const coord = getCanvasCoord(e); if (coord) { const w = screenToWorld(coord.x, coord.y); isDrawing = true; strokeActive = true; lastX = w.x; lastY = w.y; if (toolMode === 'brush') addStamp(w.x, w.y, true); else if (toolMode === 'eraser') eraseAt(w.x, w.y); } } else if (touches.length === 2) { isDrawing = false; isPanning = true; const dx = touches[1].clientX - touches[0].clientX, dy = touches[1].clientY - touches[0].clientY; initialPinchDist = Math.hypot(dx, dy); initialScale = view.scale; const rect = canvas.getBoundingClientRect(); pinchCenterX = (touches[0].clientX + touches[1].clientX)/2 - rect.left; pinchCenterY = (touches[0].clientY + touches[1].clientY)/2 - rect.top; lastPanX = pinchCenterX; lastPanY = pinchCenterY; initialTouchAngle = Math.atan2(dy, dx); initialAngle = view.angle; isRotating = true; } }
+  function handleTouchMove(e) { if (eyedropperActive) { e.preventDefault(); const t = e.touches[0]; if (t) updateEyedropperBubble(t.clientX, t.clientY); return; } e.preventDefault(); const touches = e.touches; if (touches.length === 1 && isDrawing) { const coord = getCanvasCoord(e); if (coord) { const w = screenToWorld(coord.x, coord.y); if (toolMode === 'brush') addStamp(w.x, w.y, false, wordFlowEnabled ? Math.atan2(w.y-lastY, w.x-lastX) : null); else if (toolMode === 'eraser') eraseAt(w.x, w.y); lastX = w.x; lastY = w.y; } } else if (touches.length === 2 && isPanning) { const rect = canvas.getBoundingClientRect(); const mx = (touches[0].clientX + touches[1].clientX)/2 - rect.left, my = (touches[0].clientY + touches[1].clientY)/2 - rect.top; applyPan(mx - lastPanX, my - lastPanY); const dist = Math.hypot(touches[1].clientX - touches[0].clientX, touches[1].clientY - touches[0].clientY); if (initialPinchDist) { const ns = Math.min(Math.max(initialScale * dist / initialPinchDist, 0.15), 6); const wx = (pinchCenterX - view.offsetX) / view.scale, wy = (pinchCenterY - view.offsetY) / view.scale; view.scale = ns; view.offsetX = pinchCenterX - wx * ns; view.offsetY = pinchCenterY - wy * ns; redrawCanvas(); } const curAngle = Math.atan2(touches[1].clientY - touches[0].clientY, touches[1].clientX - touches[0].clientX); view.angle = initialAngle + (curAngle - initialTouchAngle); redrawCanvas(); lastPanX = mx; lastPanY = my; } }
+  function handleTouchEnd(e) { e.preventDefault(); if (!e.touches.length) { isDrawing = isPanning = isRotating = false; if (strokeActive) { strokeActive = false; saveToHistory(); } } else if (e.touches.length === 1 && (isPanning || isRotating)) { isPanning = isRotating = false; const coord = getCanvasCoord(e); if (coord) { const w = screenToWorld(coord.x, coord.y); isDrawing = true; strokeActive = true; lastX = w.x; lastY = w.y; if (toolMode === 'brush') addStamp(w.x, w.y, true); else if (toolMode === 'eraser') eraseAt(w.x, w.y); } } }
+  function getCanvasCoord(e) { const rect = canvas.getBoundingClientRect(); let cx, cy; if (e.touches) { if (!e.touches.length) return null; cx = e.touches[0].clientX; cy = e.touches[0].clientY; } else { cx = e.clientX; cy = e.clientY; } return { x: cx - rect.left, y: cy - rect.top }; }
+  function applyPan(dx, dy) { view.offsetX += dx; view.offsetY += dy; redrawCanvas(); }
+  function handleMouseDown(e) { if (eyedropperActive) { e.preventDefault(); return; } if (e.button === 1 || e.button === 2) { e.preventDefault(); isPanning = true; const rect = canvas.getBoundingClientRect(); lastPanX = e.clientX - rect.left; lastPanY = e.clientY - rect.top; canvas.style.cursor = 'grab'; return; } if (e.button === 0) { e.preventDefault(); const coord = getCanvasCoord(e); if (!coord) return; const w = screenToWorld(coord.x, coord.y); isDrawing = true; strokeActive = true; lastX = w.x; lastY = w.y; if (toolMode === 'brush') addStamp(w.x, w.y, true); else if (toolMode === 'eraser') eraseAt(w.x, w.y); } }
+  function handleMouseMove(e) { if (eyedropperActive) { updateEyedropperBubble(e.clientX, e.clientY); return; } const rect = canvas.getBoundingClientRect(); const cx = e.clientX - rect.left, cy = e.clientY - rect.top; if (isPanning) { e.preventDefault(); applyPan(cx - lastPanX, cy - lastPanY); lastPanX = cx; lastPanY = cy; canvas.style.cursor = 'grabbing'; } else if (isDrawing) { e.preventDefault(); const coord = getCanvasCoord(e); if (!coord) return; const w = screenToWorld(coord.x, coord.y); if (toolMode === 'brush') addStamp(w.x, w.y, false, wordFlowEnabled ? Math.atan2(w.y-lastY, w.x-lastX) : null); else if (toolMode === 'eraser') eraseAt(w.x, w.y); lastX = w.x; lastY = w.y; } if (toolMode === 'eraser') updateEraserBubblePosition(e.clientX, e.clientY); }
+  function handleMouseUp(e) { if (eyedropperActive) return; if (isPanning) { isPanning = false; canvas.style.cursor = 'crosshair'; } else if (isDrawing) { e.preventDefault(); isDrawing = false; if (strokeActive) { strokeActive = false; saveToHistory(); } } }
+  function handleWheel(e) { e.preventDefault(); const rect = canvas.getBoundingClientRect(); const delta = e.deltaY > 0 ? 0.8 : -0.8; const zoom = 1 - delta * 0.005; const ns = Math.min(Math.max(view.scale * zoom, 0.15), 6); const cx = e.clientX - rect.left, cy = e.clientY - rect.top; const wx = (cx - view.offsetX) / view.scale, wy = (cy - view.offsetY) / view.scale; view.scale = ns; view.offsetX = cx - wx * ns; view.offsetY = cy - wy * ns; redrawCanvas(); }
+
+  undoBtn.addEventListener('click', undo); redoBtn.addEventListener('click', redo);
+  canvas.width = window.innerWidth; canvas.height = window.innerHeight; view.offsetX = canvas.width/2; view.offsetY = canvas.height/2;
+  rebuildSpatialIndex(); saveToHistory(); redrawCanvas(); renderLayersUI();
+  canvas.addEventListener('touchstart', handleTouchStart, { passive: false }); canvas.addEventListener('touchmove', handleTouchMove, { passive: false }); canvas.addEventListener('touchend', handleTouchEnd); canvas.addEventListener('touchcancel', handleTouchEnd);
+  canvas.addEventListener('mousedown', handleMouseDown); window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); canvas.addEventListener('wheel', handleWheel, { passive: false }); canvas.addEventListener('contextmenu', e => e.preventDefault());
+  window.addEventListener('keydown', e => { if ((e.ctrlKey||e.metaKey) && e.key==='z') { e.preventDefault(); undo(); } if ((e.ctrlKey||e.metaKey) && e.key==='y') { e.preventDefault(); redo(); } if ((e.ctrlKey||e.metaKey) && e.key==='[') { view.angle -= Math.PI/12; redrawCanvas(); } if ((e.ctrlKey||e.metaKey) && e.key===']') { view.angle += Math.PI/12; redrawCanvas(); } if (e.key==='Escape') deactivateEyedropper(); });
+  window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; redrawCanvas(); });
+  expandTextInput();
+})();
+</script>
+</body>
+</html>
